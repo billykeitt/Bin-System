@@ -6,7 +6,8 @@ from supabase import create_client
 import plotly.express as px
 import os
 from dotenv import load_dotenv
-from postgrest.exceptions import APIError
+from postgrest import APIError
+
 
 # -----------------------------
 # SUPABASE CONNECTION
