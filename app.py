@@ -172,7 +172,12 @@ if st.session_state["user"] is None:
 
 st.sidebar.markdown("**Menu**")
 menu = st.sidebar.radio(
-    "", ["Dashboard", "Receive", "Produce", "Adjust", "Bin History Lookup", "PCN Lookup"],
+    "", [
+        "Dashboard",
+        "Receive", "Produce", "Adjust",
+        "Reports",
+        "Bin History Lookup", "PCN Lookup"
+    ],
     label_visibility="collapsed"
 )
 st.sidebar.markdown("---")
@@ -584,42 +589,75 @@ if menu == "Receive":
 
     if file:
         df = std_columns(pd.read_excel(file))
-        st.dataframe(df.head(5), use_container_width=True, hide_index=True)
-        st.caption(f"{len(df)} rows detected")
 
-        if st.button("Process Receive"):
-            bins   = df["BIN"].unique().tolist()
-            states = get_bin_states(bins)
-            rows, errors, seen = [], [], set()
+        # ── Validation preview ────────────────────────────────
+        bins   = df["BIN"].unique().tolist()
+        states = get_bin_states(bins)
 
-            for row in df.itertuples(index=False):
-                bin_code = row.BIN
-                if bin_code in seen:
-                    errors.append((bin_code, "Duplicate in file")); continue
-                seen.add(bin_code)
-                if states.get(bin_code, {}).get("state") == "RECEIVED":
-                    errors.append((bin_code, "Already in RECEIVED state")); continue
-                rows.append({
-                    "txid":             str(uuid.uuid4()),
-                    "transaction_type": "RECEIVE",
-                    "bin_code":         bin_code,
-                    "transaction_date": parse_date(row.DATE),
-                    "pcn":     clean(getattr(row, "PCN",      None)),
-                    "wslip":   clean(getattr(row, "W_SLIP",   None)),
-                    "grn_no":  clean(getattr(row, "GRN_NO",   None)),
-                    "wht_no":  clean(getattr(row, "W_HT_NO",  None)),
-                    "supplier":clean(getattr(row, "SUPPLIER",  None)),
-                    "source":  clean(getattr(row, "SOURCE",   None)),
-                    "variety": clean(getattr(row, "VARIETY",  None)),
-                    "weight":  clean(getattr(row, "WEIGHT",   None)),
-                    "rate":    clean(getattr(row, "RATE",     None)),
-                    "amount":  clean(getattr(row, "AMOUNT",   None)),
-                    "created_at": datetime.now().isoformat(),
-                })
+        dupes_in_file   = df[df.duplicated(subset=["BIN"], keep=False)]["BIN"].unique().tolist()
+        already_rcv     = [b for b in bins if states.get(b, {}).get("state") == "RECEIVED"]
+        amount_mismatch = []
+        if all(c in df.columns for c in ["WEIGHT","RATE","AMOUNT"]):
+            df["_expected"] = pd.to_numeric(df["WEIGHT"], errors="coerce") * pd.to_numeric(df["RATE"], errors="coerce")
+            df["_actual"]   = pd.to_numeric(df["AMOUNT"], errors="coerce")
+            bad = df[((df["_actual"] - df["_expected"]).abs() > 0.01) & df["_expected"].notna() & df["_actual"].notna()]
+            amount_mismatch = bad["BIN"].tolist()
 
-            failed = bulk_insert(rows, "Receive")
-            st.success(f"✅ {len(rows) - len(failed)} bins received successfully")
-            show_errors(errors, failed)
+        will_process = [b for b in bins
+                        if b not in dupes_in_file
+                        and b not in already_rcv
+                        and b not in amount_mismatch]
+
+        st.markdown("**Upload Preview**")
+        p1, p2, p3, p4, p5 = st.columns(5)
+        with p1: metric_card("Total Rows",        fmt_num(len(df)))
+        with p2: metric_card("Will Process",      fmt_num(len(will_process)),  "✅ Ready")
+        with p3: metric_card("Dupes in File",     fmt_num(len(dupes_in_file)), "⚠️ Skipped")
+        with p4: metric_card("Already Received",  fmt_num(len(already_rcv)),   "⚠️ Skipped")
+        with p5: metric_card("Amount Mismatch",   fmt_num(len(amount_mismatch)),"❌ Skipped")
+
+        if dupes_in_file or already_rcv or amount_mismatch:
+            with st.expander("View issue details"):
+                issue_rows = []
+                for b in dupes_in_file:   issue_rows.append({"bin_code": b, "issue": "Duplicate in file"})
+                for b in already_rcv:     issue_rows.append({"bin_code": b, "issue": "Already in RECEIVED state"})
+                for b in amount_mismatch: issue_rows.append({"bin_code": b, "issue": "Amount ≠ Weight × Rate"})
+                st.dataframe(pd.DataFrame(issue_rows), use_container_width=True, hide_index=True)
+
+        if len(will_process) == 0:
+            st.error("Nothing to process — all bins have issues.")
+        else:
+            st.dataframe(df[df["BIN"].isin(will_process)].head(5),
+                         use_container_width=True, hide_index=True)
+            st.caption(f"Showing first 5 of {len(will_process)} bins that will be inserted")
+
+            if st.button(f"✅ Confirm & Process {len(will_process)} Bins"):
+                rows, errors, seen = [], [], set()
+                for row in df.itertuples(index=False):
+                    bin_code = row.BIN
+                    if bin_code not in will_process: continue
+                    if bin_code in seen: continue
+                    seen.add(bin_code)
+                    rows.append({
+                        "txid":             str(uuid.uuid4()),
+                        "transaction_type": "RECEIVE",
+                        "bin_code":         bin_code,
+                        "transaction_date": parse_date(row.DATE),
+                        "pcn":     clean(getattr(row, "PCN",      None)),
+                        "wslip":   clean(getattr(row, "W_SLIP",   None)),
+                        "grn_no":  clean(getattr(row, "GRN_NO",   None)),
+                        "wht_no":  clean(getattr(row, "W_HT_NO",  None)),
+                        "supplier":clean(getattr(row, "SUPPLIER",  None)),
+                        "source":  clean(getattr(row, "SOURCE",   None)),
+                        "variety": clean(getattr(row, "VARIETY",  None)),
+                        "weight":  clean(getattr(row, "WEIGHT",   None)),
+                        "rate":    clean(getattr(row, "RATE",     None)),
+                        "amount":  clean(getattr(row, "AMOUNT",   None)),
+                        "created_at": datetime.now().isoformat(),
+                    })
+                failed = bulk_insert(rows, "Receive")
+                st.success(f"✅ {len(rows) - len(failed)} bins received successfully")
+                show_errors(errors, failed)
 
 
 # ================================================================
@@ -632,45 +670,66 @@ if menu == "Produce":
 
     if file:
         df = std_columns(pd.read_excel(file))
-        st.dataframe(df.head(5), use_container_width=True, hide_index=True)
-        st.caption(f"{len(df)} rows detected")
 
-        if st.button("Process Production"):
-            bins   = df["BIN"].unique().tolist()
-            states = get_bin_states(bins)
-            rows, errors, seen = [], [], set()
+        # ── Validation preview ────────────────────────────────
+        bins   = df["BIN"].unique().tolist()
+        states = get_bin_states(bins)
 
-            for row in df.itertuples(index=False):
-                bin_code = row.BIN
-                if bin_code in seen:
-                    errors.append((bin_code, "Duplicate in file")); continue
-                seen.add(bin_code)
-                s = states.get(bin_code)
-                if not s:
-                    errors.append((bin_code, "Never received")); continue
-                if s["state"] != "RECEIVED":
-                    errors.append((bin_code, f"Not in RECEIVED state (current: {s['state']})")); continue
-                rows.append({
-                    "txid":             str(uuid.uuid4()),
-                    "transaction_type": "PRODUCE",
-                    "bin_code":         bin_code,
-                    "transaction_date": parse_date(row.DATE),
-                    "batch_no":         clean(getattr(row, "BATCHNO",   None)),
-                    "machine_id":       clean(getattr(row, "MACHINEID", None)),
-                    "linked_txid":      s["last_txid"],
-                    "pcn":     s.get("pcn"),
-                    "supplier":s.get("supplier"),
-                    "source":  s.get("source"),
-                    "variety": s.get("variety"),
-                    "weight":  s.get("weight"),
-                    "rate":    s.get("rate"),
-                    "amount":  s.get("amount"),
-                    "created_at": datetime.now().isoformat(),
-                })
+        dupes_in_file = df[df.duplicated(subset=["BIN"], keep=False)]["BIN"].unique().tolist()
+        not_received  = [b for b in bins if not states.get(b) or states[b]["state"] != "RECEIVED"]
+        will_process  = [b for b in bins if b not in dupes_in_file and b not in not_received]
 
-            failed = bulk_insert(rows, "Produce")
-            st.success(f"✅ {len(rows) - len(failed)} bins produced")
-            show_errors(errors, failed)
+        st.markdown("**Upload Preview**")
+        p1, p2, p3, p4 = st.columns(4)
+        with p1: metric_card("Total Rows",      fmt_num(len(df)))
+        with p2: metric_card("Will Process",    fmt_num(len(will_process)), "✅ Ready")
+        with p3: metric_card("Dupes in File",   fmt_num(len(dupes_in_file)), "⚠️ Skipped")
+        with p4: metric_card("Not in Stock",    fmt_num(len(not_received)), "⚠️ Skipped")
+
+        if dupes_in_file or not_received:
+            with st.expander("View issue details"):
+                issue_rows = []
+                for b in dupes_in_file: issue_rows.append({"bin_code": b, "issue": "Duplicate in file"})
+                for b in not_received:
+                    state = states.get(b, {}).get("state", "Never received")
+                    issue_rows.append({"bin_code": b, "issue": f"Not in RECEIVED state ({state})"})
+                st.dataframe(pd.DataFrame(issue_rows), use_container_width=True, hide_index=True)
+
+        if len(will_process) == 0:
+            st.error("Nothing to process — all bins have issues.")
+        else:
+            st.dataframe(df[df["BIN"].isin(will_process)].head(5),
+                         use_container_width=True, hide_index=True)
+            st.caption(f"Showing first 5 of {len(will_process)} bins that will be inserted")
+
+            if st.button(f"✅ Confirm & Process {len(will_process)} Bins"):
+                rows, errors, seen = [], [], set()
+                for row in df.itertuples(index=False):
+                    bin_code = row.BIN
+                    if bin_code not in will_process: continue
+                    if bin_code in seen: continue
+                    seen.add(bin_code)
+                    s = states[bin_code]
+                    rows.append({
+                        "txid":             str(uuid.uuid4()),
+                        "transaction_type": "PRODUCE",
+                        "bin_code":         bin_code,
+                        "transaction_date": parse_date(row.DATE),
+                        "batch_no":         clean(getattr(row, "BATCHNO",   None)),
+                        "machine_id":       clean(getattr(row, "MACHINEID", None)),
+                        "linked_txid":      s["last_txid"],
+                        "pcn":     s.get("pcn"),
+                        "supplier":s.get("supplier"),
+                        "source":  s.get("source"),
+                        "variety": s.get("variety"),
+                        "weight":  s.get("weight"),
+                        "rate":    s.get("rate"),
+                        "amount":  s.get("amount"),
+                        "created_at": datetime.now().isoformat(),
+                    })
+                failed = bulk_insert(rows, "Produce")
+                st.success(f"✅ {len(rows) - len(failed)} bins produced")
+                show_errors(errors, failed)
 
 
 # ================================================================
@@ -683,42 +742,63 @@ if menu == "Adjust":
 
     if file:
         df = std_columns(pd.read_excel(file))
-        st.dataframe(df.head(5), use_container_width=True, hide_index=True)
-        st.caption(f"{len(df)} rows detected")
 
-        if st.button("Process Adjustment"):
-            bins   = df["BIN"].unique().tolist()
-            states = get_bin_states(bins)
-            rows, errors, seen = [], [], set()
+        bins   = df["BIN"].unique().tolist()
+        states = get_bin_states(bins)
 
-            for row in df.itertuples(index=False):
-                bin_code = row.BIN
-                if bin_code in seen:
-                    errors.append((bin_code, "Duplicate in file")); continue
-                seen.add(bin_code)
-                s = states.get(bin_code)
-                if not s or s["state"] != "RECEIVED":
-                    current = s["state"] if s else "UNKNOWN"
-                    errors.append((bin_code, f"Must be RECEIVED to adjust out (current: {current})")); continue
-                rows.append({
-                    "txid":             str(uuid.uuid4()),
-                    "transaction_type": "ADJUST_OUT",
-                    "bin_code":         bin_code,
-                    "transaction_date": parse_date(row.DATE),
-                    "linked_txid":      s["last_txid"],
-                    "pcn":     s.get("pcn"),
-                    "supplier":s.get("supplier"),
-                    "source":  s.get("source"),
-                    "variety": s.get("variety"),
-                    "weight":  s.get("weight"),
-                    "rate":    s.get("rate"),
-                    "amount":  s.get("amount"),
-                    "created_at": datetime.now().isoformat(),
-                })
+        dupes_in_file = df[df.duplicated(subset=["BIN"], keep=False)]["BIN"].unique().tolist()
+        not_received  = [b for b in bins if not states.get(b) or states[b]["state"] != "RECEIVED"]
+        will_process  = [b for b in bins if b not in dupes_in_file and b not in not_received]
 
-            failed = bulk_insert(rows, "Adjust")
-            st.success(f"✅ {len(rows) - len(failed)} bins adjusted out")
-            show_errors(errors, failed)
+        st.markdown("**Upload Preview**")
+        p1, p2, p3, p4 = st.columns(4)
+        with p1: metric_card("Total Rows",    fmt_num(len(df)))
+        with p2: metric_card("Will Process",  fmt_num(len(will_process)), "✅ Ready")
+        with p3: metric_card("Dupes in File", fmt_num(len(dupes_in_file)), "⚠️ Skipped")
+        with p4: metric_card("Not in Stock",  fmt_num(len(not_received)), "⚠️ Skipped")
+
+        if dupes_in_file or not_received:
+            with st.expander("View issue details"):
+                issue_rows = []
+                for b in dupes_in_file: issue_rows.append({"bin_code": b, "issue": "Duplicate in file"})
+                for b in not_received:
+                    state = states.get(b, {}).get("state", "Never received")
+                    issue_rows.append({"bin_code": b, "issue": f"Not in RECEIVED state ({state})"})
+                st.dataframe(pd.DataFrame(issue_rows), use_container_width=True, hide_index=True)
+
+        if len(will_process) == 0:
+            st.error("Nothing to process — all bins have issues.")
+        else:
+            st.dataframe(df[df["BIN"].isin(will_process)].head(5),
+                         use_container_width=True, hide_index=True)
+            st.caption(f"Showing first 5 of {len(will_process)} bins that will be inserted")
+
+            if st.button(f"✅ Confirm & Process {len(will_process)} Bins"):
+                rows, errors, seen = [], [], set()
+                for row in df.itertuples(index=False):
+                    bin_code = row.BIN
+                    if bin_code not in will_process: continue
+                    if bin_code in seen: continue
+                    seen.add(bin_code)
+                    s = states[bin_code]
+                    rows.append({
+                        "txid":             str(uuid.uuid4()),
+                        "transaction_type": "ADJUST_OUT",
+                        "bin_code":         bin_code,
+                        "transaction_date": parse_date(row.DATE),
+                        "linked_txid":      s["last_txid"],
+                        "pcn":     s.get("pcn"),
+                        "supplier":s.get("supplier"),
+                        "source":  s.get("source"),
+                        "variety": s.get("variety"),
+                        "weight":  s.get("weight"),
+                        "rate":    s.get("rate"),
+                        "amount":  s.get("amount"),
+                        "created_at": datetime.now().isoformat(),
+                    })
+                failed = bulk_insert(rows, "Adjust")
+                st.success(f"✅ {len(rows) - len(failed)} bins adjusted out")
+                show_errors(errors, failed)
 
 
 # ================================================================
@@ -804,3 +884,290 @@ if menu == "PCN Lookup":
             )
             fig_pcn.update_layout(**PLOTLY_LIGHT, legend=LEGEND_DEFAULT, title_font_size=13)
             st.plotly_chart(fig_pcn, use_container_width=True)
+
+
+# ================================================================
+# REPORTS  (PCN Closure + Weekly/Monthly Summary + Bulk Bin Lookup)
+# ================================================================
+
+if menu == "Reports":
+    st.markdown("<div class='section-header'>Reports</div>", unsafe_allow_html=True)
+
+    report_tab = st.radio(
+        "", ["PCN Closure", "Weekly Summary", "Monthly Summary", "Bulk Bin Lookup"],
+        horizontal=True, label_visibility="collapsed"
+    )
+
+    # ── helper: excel download button ────────────────────────
+    def excel_download(df: pd.DataFrame, filename: str, label: str = "⬇️ Export to Excel"):
+        import io
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as w:
+            df.to_excel(w, index=False)
+        st.download_button(label=label, data=buf.getvalue(),
+                           file_name=filename, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    # ──────────────────────────────────────────────────────────
+    # PCN CLOSURE REPORT
+    # ──────────────────────────────────────────────────────────
+    if report_tab == "PCN Closure":
+        st.markdown("#### PCN Closure Report")
+        st.caption("A PCN is CLOSED when all its bins have been produced or adjusted out.")
+
+        pcn_cls = fetch_all("v_pcn_closure")
+
+        if not pcn_cls.empty:
+            for col in ["total_bins","bins_in_stock","bins_produced","bins_consumed",
+                        "total_weight","weight_in_stock","weight_produced","total_value",
+                        "days_open","completion_pct"]:
+                if col in pcn_cls.columns:
+                    pcn_cls[col] = pd.to_numeric(pcn_cls[col], errors="coerce")
+
+            # Filter
+            cf1, cf2, cf3 = st.columns(3)
+            status_filter   = cf1.selectbox("Status", ["All","OPEN","CLOSED"])
+            supplier_f      = cf2.text_input("Supplier", key="pcn_cls_sup")
+            variety_f       = cf3.text_input("Variety",  key="pcn_cls_var")
+
+            cls_filt = pcn_cls.copy()
+            if status_filter != "All":
+                cls_filt = cls_filt[cls_filt["pcn_status"] == status_filter]
+            if supplier_f:
+                cls_filt = cls_filt[cls_filt["supplier"].str.contains(supplier_f, case=False, na=False)]
+            if variety_f:
+                cls_filt = cls_filt[cls_filt["variety"].str.contains(variety_f, case=False, na=False)]
+
+            # Summary KPIs
+            k1, k2, k3, k4 = st.columns(4)
+            with k1: metric_card("Total PCNs",   fmt_num(len(cls_filt)))
+            with k2: metric_card("Open PCNs",    fmt_num(len(cls_filt[cls_filt["pcn_status"]=="OPEN"])))
+            with k3: metric_card("Closed PCNs",  fmt_num(len(cls_filt[cls_filt["pcn_status"]=="CLOSED"])))
+            with k4: metric_card("Avg Completion", fmt_num(cls_filt["completion_pct"].mean(), 1) + "%")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Colour code status
+            def highlight_status(row):
+                color = "rgba(76,175,80,0.12)" if row["pcn_status"] == "CLOSED" else "rgba(255,152,0,0.12)"
+                return [f"background-color: {color}"] * len(row)
+
+            display_cols = {
+                "pcn": "PCN", "supplier": "Supplier", "variety": "Variety",
+                "pcn_status": "Status", "completion_pct": "Complete %",
+                "total_bins": "Total Bins", "bins_in_stock": "In Stock",
+                "bins_produced": "Produced", "bins_consumed": "Consumed",
+                "total_weight": "Total Wt", "weight_produced": "Prod Wt",
+                "total_value": "Value", "opened_date": "Opened",
+                "closed_date": "Closed", "days_open": "Days Open"
+            }
+            disp = cls_filt[[c for c in display_cols if c in cls_filt.columns]].rename(columns=display_cols)
+            st.dataframe(
+                disp.style.apply(highlight_status, axis=1),
+                use_container_width=True, hide_index=True, height=420
+            )
+            excel_download(disp, f"pcn_closure_{date.today()}.xlsx")
+        else:
+            st.info("No PCN data available.")
+
+    # ──────────────────────────────────────────────────────────
+    # WEEKLY SUMMARY
+    # ──────────────────────────────────────────────────────────
+    elif report_tab == "Weekly Summary":
+        st.markdown("#### Weekly Summary")
+
+        weekly = fetch_all("v_weekly_summary")
+
+        if not weekly.empty:
+            for col in ["bins_received","bins_produced","bins_adjusted",
+                        "weight_received","weight_produced","value_received",
+                        "running_balance_bins","running_balance_weight"]:
+                if col in weekly.columns:
+                    weekly[col] = pd.to_numeric(weekly[col], errors="coerce")
+
+            weekly["week_start"] = pd.to_datetime(weekly["week_start"])
+
+            # Date range filter
+            wf1, wf2 = st.columns(2)
+            w_min = weekly["week_start"].min().date()
+            w_max = weekly["week_start"].max().date()
+            w_from = wf1.date_input("From week", value=w_min, min_value=w_min, max_value=w_max, key="wf")
+            w_to   = wf2.date_input("To week",   value=w_max, min_value=w_min, max_value=w_max, key="wt")
+            wmask  = (weekly["week_start"].dt.date >= w_from) & (weekly["week_start"].dt.date <= w_to)
+            wf     = weekly[wmask].sort_values("week_start")
+
+            # KPIs for selected range
+            wk1, wk2, wk3, wk4 = st.columns(4)
+            with wk1: metric_card("Weeks",          fmt_num(len(wf)))
+            with wk2: metric_card("Total Received", fmt_num(wf["bins_received"].sum()))
+            with wk3: metric_card("Total Produced", fmt_num(wf["bins_produced"].sum()))
+            with wk4: metric_card("Avg / Week",     fmt_num(wf["bins_received"].mean(), 1))
+
+            # Chart
+            fig_w = go.Figure()
+            fig_w.add_trace(go.Bar(x=wf["week_label"], y=wf["bins_received"],
+                                   name="Received", marker_color="#A5D6A7"))
+            fig_w.add_trace(go.Bar(x=wf["week_label"], y=wf["bins_produced"],
+                                   name="Produced", marker_color="#1B5E20"))
+            fig_w.add_trace(go.Scatter(x=wf["week_label"], y=wf["running_balance_bins"],
+                                       name="Balance", mode="lines+markers",
+                                       line=dict(color="#FF7043", width=2)))
+            fig_w.update_layout(**PLOTLY_LIGHT, legend=LEGEND_HORIZ,
+                                title="Weekly Bins: Received vs Produced",
+                                barmode="group", xaxis_title="Week", yaxis_title="Bins",
+                                title_font_size=13)
+            st.plotly_chart(fig_w, use_container_width=True)
+
+            # Table
+            wf_disp = wf[["week_label","bins_received","weight_received","value_received",
+                           "bins_produced","weight_produced","bins_adjusted",
+                           "running_balance_bins","running_balance_weight"]].copy()
+            wf_disp.columns = ["Week","Rcvd Bins","Rcvd Wt","Rcvd Val",
+                                "Prod Bins","Prod Wt","Adj Out","Bal Bins","Bal Wt"]
+            st.dataframe(wf_disp.sort_values("Week", ascending=False),
+                         use_container_width=True, hide_index=True, height=320)
+            excel_download(wf_disp, f"weekly_summary_{date.today()}.xlsx")
+        else:
+            st.info("No weekly data available.")
+
+    # ──────────────────────────────────────────────────────────
+    # MONTHLY SUMMARY
+    # ──────────────────────────────────────────────────────────
+    elif report_tab == "Monthly Summary":
+        st.markdown("#### Monthly Summary")
+
+        monthly = fetch_all("v_monthly_summary")
+
+        if not monthly.empty:
+            for col in ["bins_received","bins_produced","bins_adjusted",
+                        "weight_received","weight_produced","value_received",
+                        "running_balance_bins","running_balance_weight"]:
+                if col in monthly.columns:
+                    monthly[col] = pd.to_numeric(monthly[col], errors="coerce")
+
+            monthly["month_start"] = pd.to_datetime(monthly["month_start"])
+
+            # KPIs
+            mk1, mk2, mk3, mk4 = st.columns(4)
+            with mk1: metric_card("Months Active",  fmt_num(len(monthly)))
+            with mk2: metric_card("Total Received", fmt_num(monthly["bins_received"].sum()))
+            with mk3: metric_card("Total Produced", fmt_num(monthly["bins_produced"].sum()))
+            with mk4: metric_card("Total Value",    fmt_num(monthly["value_received"].sum(), 2))
+
+            # Chart
+            mf = monthly.sort_values("month_start")
+            fig_m = go.Figure()
+            fig_m.add_trace(go.Bar(x=mf["month_label"], y=mf["bins_received"],
+                                   name="Received", marker_color="#A5D6A7"))
+            fig_m.add_trace(go.Bar(x=mf["month_label"], y=mf["bins_produced"],
+                                   name="Produced", marker_color="#1B5E20"))
+            fig_m.add_trace(go.Scatter(x=mf["month_label"], y=mf["running_balance_bins"],
+                                       name="Balance", mode="lines+markers",
+                                       line=dict(color="#FF7043", width=2)))
+            fig_m.update_layout(**PLOTLY_LIGHT, legend=LEGEND_HORIZ,
+                                title="Monthly Bins: Received vs Produced",
+                                barmode="group", xaxis_title="Month", yaxis_title="Bins",
+                                title_font_size=13)
+            st.plotly_chart(fig_m, use_container_width=True)
+
+            # Value trend
+            fig_mv = go.Figure()
+            fig_mv.add_trace(go.Scatter(
+                x=mf["month_label"], y=mf["value_received"],
+                fill="tozeroy", name="Value Received",
+                line=dict(color="#1B5E20", width=2),
+                fillcolor="rgba(27,94,32,0.08)"
+            ))
+            fig_mv.update_layout(**PLOTLY_LIGHT, legend=LEGEND_DEFAULT,
+                                 title="Monthly Value Received (KES)",
+                                 xaxis_title="Month", yaxis_title="KES", title_font_size=13)
+            st.plotly_chart(fig_mv, use_container_width=True)
+
+            # Table
+            mf_disp = mf[["month_label","bins_received","weight_received","value_received",
+                           "bins_produced","weight_produced","bins_adjusted",
+                           "running_balance_bins","running_balance_weight"]].copy()
+            mf_disp.columns = ["Month","Rcvd Bins","Rcvd Wt","Rcvd Val",
+                                "Prod Bins","Prod Wt","Adj Out","Bal Bins","Bal Wt"]
+            st.dataframe(mf_disp.sort_values("Month", ascending=False),
+                         use_container_width=True, hide_index=True, height=320)
+            excel_download(mf_disp, f"monthly_summary_{date.today()}.xlsx")
+        else:
+            st.info("No monthly data available.")
+
+    # ──────────────────────────────────────────────────────────
+    # BULK BIN LOOKUP
+    # ──────────────────────────────────────────────────────────
+    elif report_tab == "Bulk Bin Lookup":
+        st.markdown("#### Bulk Bin Lookup")
+        st.caption("Paste bin codes below — one per line, or comma-separated.")
+
+        raw = st.text_area("Bin codes", height=140, placeholder="BIN001\nBIN002\nBIN003")
+
+        if raw.strip():
+            # Parse — support newline or comma separated
+            bin_list = [b.strip() for b in raw.replace(",", "\n").splitlines() if b.strip()]
+            bin_list = list(dict.fromkeys(bin_list))   # dedupe, preserve order
+            st.caption(f"{len(bin_list)} unique bins entered")
+
+            if st.button("🔍 Look Up Bins"):
+                # Fetch latest state
+                states = get_bin_states(bin_list)
+
+                # Fetch full transaction history for all bins in one query
+                hist_res = (
+                    supabase.table("bin_transactions")
+                    .select("*")
+                    .in_("bin_code", bin_list)
+                    .order("created_at")
+                    .range(0, 50000)
+                    .execute()
+                )
+                hist_df = pd.DataFrame(hist_res.data)
+
+                if hist_df.empty:
+                    st.warning("No transactions found for any of these bins.")
+                else:
+                    # Summary table — one row per bin
+                    summary_rows = []
+                    for b in bin_list:
+                        s       = states.get(b)
+                        b_hist  = hist_df[hist_df["bin_code"] == b]
+                        rcv_row = b_hist[b_hist["transaction_type"] == "RECEIVE"]
+                        prd_row = b_hist[b_hist["transaction_type"] == "PRODUCE"]
+                        summary_rows.append({
+                            "Bin Code":      b,
+                            "Current State": s["state"] if s else "NOT FOUND",
+                            "PCN":           rcv_row.iloc[0]["pcn"]           if not rcv_row.empty else "—",
+                            "Supplier":      rcv_row.iloc[0]["supplier"]      if not rcv_row.empty else "—",
+                            "Variety":       rcv_row.iloc[0]["variety"]       if not rcv_row.empty else "—",
+                            "Weight":        rcv_row.iloc[0]["weight"]        if not rcv_row.empty else "—",
+                            "Received Date": rcv_row.iloc[0]["transaction_date"] if not rcv_row.empty else "—",
+                            "Produced Date": prd_row.iloc[0]["transaction_date"] if not prd_row.empty else "—",
+                            "Batch No":      prd_row.iloc[0]["batch_no"]      if not prd_row.empty else "—",
+                        })
+
+                    summary_df = pd.DataFrame(summary_rows)
+
+                    # State breakdown KPIs
+                    states_series = summary_df["Current State"].value_counts()
+                    bk1, bk2, bk3, bk4 = st.columns(4)
+                    with bk1: metric_card("Bins Found",    fmt_num(len(summary_df[summary_df["Current State"] != "NOT FOUND"])))
+                    with bk2: metric_card("In Stock",      fmt_num(states_series.get("RECEIVED", 0)))
+                    with bk3: metric_card("Produced",      fmt_num(states_series.get("PRODUCED", 0)))
+                    with bk4: metric_card("Not Found",     fmt_num(states_series.get("NOT FOUND", 0)))
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                    excel_download(summary_df, f"bulk_bin_lookup_{date.today()}.xlsx")
+
+                    # Full transaction detail in expander
+                    with st.expander("Full transaction history for all bins"):
+                        st.dataframe(
+                            hist_df[[c for c in [
+                                "bin_code","transaction_type","transaction_date",
+                                "pcn","supplier","variety","weight","batch_no","machine_id"
+                            ] if c in hist_df.columns]],
+                            use_container_width=True, hide_index=True, height=400
+                        )
+                        excel_download(hist_df, f"bulk_bin_history_{date.today()}.xlsx",
+                                       "⬇️ Export Full History")
