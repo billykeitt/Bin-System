@@ -917,57 +917,61 @@ if menu == "Reports":
         pcn_cls = fetch_all("v_pcn_closure")
 
         if not pcn_cls.empty:
-            for col in ["total_bins","bins_in_stock","bins_produced","bins_consumed",
-                        "total_weight","weight_in_stock","weight_produced","total_value",
-                        "days_open","completion_pct"]:
-                if col in pcn_cls.columns:
-                    pcn_cls[col] = pd.to_numeric(pcn_cls[col], errors="coerce")
+            # Guard — if view is missing expected columns, show raw data and warn
+            expected_cols = {"pcn_status", "completion_pct", "total_bins"}
+            missing = expected_cols - set(pcn_cls.columns)
+            if missing:
+                st.warning(f"View is missing columns: {missing}. Run new_views.sql in Supabase first.")
+                st.dataframe(pcn_cls, use_container_width=True, hide_index=True)
+            else:
+                for col in ["total_bins","bins_in_stock","bins_produced","bins_consumed",
+                            "total_weight","weight_in_stock","weight_produced","total_value",
+                            "days_open","completion_pct"]:
+                    if col in pcn_cls.columns:
+                        pcn_cls[col] = pd.to_numeric(pcn_cls[col], errors="coerce")
 
-            # Filter
-            cf1, cf2, cf3 = st.columns(3)
-            status_filter   = cf1.selectbox("Status", ["All","OPEN","CLOSED"])
-            supplier_f      = cf2.text_input("Supplier", key="pcn_cls_sup")
-            variety_f       = cf3.text_input("Variety",  key="pcn_cls_var")
+                # Filter
+                cf1, cf2, cf3 = st.columns(3)
+                status_filter   = cf1.selectbox("Status", ["All","OPEN","CLOSED"])
+                supplier_f      = cf2.text_input("Supplier", key="pcn_cls_sup")
+                variety_f       = cf3.text_input("Variety",  key="pcn_cls_var")
 
-            cls_filt = pcn_cls.copy()
-            if status_filter != "All":
-                cls_filt = cls_filt[cls_filt["pcn_status"] == status_filter]
-            if supplier_f:
-                cls_filt = cls_filt[cls_filt["supplier"].str.contains(supplier_f, case=False, na=False)]
-            if variety_f:
-                cls_filt = cls_filt[cls_filt["variety"].str.contains(variety_f, case=False, na=False)]
+                cls_filt = pcn_cls.copy()
+                if status_filter != "All":
+                    cls_filt = cls_filt[cls_filt["pcn_status"] == status_filter]
+                if supplier_f:
+                    cls_filt = cls_filt[cls_filt["supplier"].str.contains(supplier_f, case=False, na=False)]
+                if variety_f:
+                    cls_filt = cls_filt[cls_filt["variety"].str.contains(variety_f, case=False, na=False)]
 
-            # Summary KPIs
-            k1, k2, k3, k4 = st.columns(4)
-            with k1: metric_card("Total PCNs",   fmt_num(len(cls_filt)))
-            with k2: metric_card("Open PCNs",    fmt_num(len(cls_filt[cls_filt["pcn_status"]=="OPEN"])))
-            with k3: metric_card("Closed PCNs",  fmt_num(len(cls_filt[cls_filt["pcn_status"]=="CLOSED"])))
-            with k4: metric_card("Avg Completion", fmt_num(cls_filt["completion_pct"].mean(), 1) + "%")
+                # Summary KPIs
+                k1, k2, k3, k4 = st.columns(4)
+                with k1: metric_card("Total PCNs",     fmt_num(len(cls_filt)))
+                with k2: metric_card("Open PCNs",      fmt_num(len(cls_filt[cls_filt["pcn_status"]=="OPEN"])))
+                with k3: metric_card("Closed PCNs",    fmt_num(len(cls_filt[cls_filt["pcn_status"]=="CLOSED"])))
+                with k4: metric_card("Avg Completion", fmt_num(cls_filt["completion_pct"].mean(), 1) + "%")
 
-            st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("<br>", unsafe_allow_html=True)
 
-            # Colour code status
-            def highlight_status(row):
-                color = "rgba(76,175,80,0.12)" if row["pcn_status"] == "CLOSED" else "rgba(255,152,0,0.12)"
-                return [f"background-color: {color}"] * len(row)
+                def highlight_status(row):
+                    color = "rgba(76,175,80,0.12)" if row.get("Status") == "CLOSED" else "rgba(255,152,0,0.12)"
+                    return [f"background-color: {color}"] * len(row)
 
-            display_cols = {
-                "pcn": "PCN", "supplier": "Supplier", "variety": "Variety",
-                "pcn_status": "Status", "completion_pct": "Complete %",
-                "total_bins": "Total Bins", "bins_in_stock": "In Stock",
-                "bins_produced": "Produced", "bins_consumed": "Consumed",
-                "total_weight": "Total Wt", "weight_produced": "Prod Wt",
-                "total_value": "Value", "opened_date": "Opened",
-                "closed_date": "Closed", "days_open": "Days Open"
-            }
-            disp = cls_filt[[c for c in display_cols if c in cls_filt.columns]].rename(columns=display_cols)
-            st.dataframe(
-                disp.style.apply(highlight_status, axis=1),
-                use_container_width=True, hide_index=True, height=420
-            )
-            excel_download(disp, f"pcn_closure_{date.today()}.xlsx")
-        else:
-            st.info("No PCN data available.")
+                display_cols = {
+                    "pcn": "PCN", "supplier": "Supplier", "variety": "Variety",
+                    "pcn_status": "Status", "completion_pct": "Complete %",
+                    "total_bins": "Total Bins", "bins_in_stock": "In Stock",
+                    "bins_produced": "Produced", "bins_consumed": "Consumed",
+                    "total_weight": "Total Wt", "weight_produced": "Prod Wt",
+                    "total_value": "Value", "opened_date": "Opened",
+                    "closed_date": "Closed", "days_open": "Days Open"
+                }
+                disp = cls_filt[[c for c in display_cols if c in cls_filt.columns]].rename(columns=display_cols)
+                st.dataframe(
+                    disp.style.apply(highlight_status, axis=1),
+                    use_container_width=True, hide_index=True, height=420
+                )
+                excel_download(disp, f"pcn_closure_{date.today()}.xlsx")
 
     # ──────────────────────────────────────────────────────────
     # WEEKLY SUMMARY
