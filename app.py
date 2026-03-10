@@ -22,22 +22,14 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
 st.set_page_config(layout="wide", page_title="Keitt Bin Ledger System")
 
-# -----------------------------
-# STYLING — White theme, working navbar
-# top: 50px accounts for Streamlit's own toolbar so navbar is never hidden
-# -----------------------------
-
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* Apply font globally without overriding theme colors */
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
 }
 
-/* ── Navbar ─────────────────────────────────────────────────
-   Uses color-scheme-aware variables so it works in both themes */
 .keitt-navbar {
     position: fixed;
     top: 50px;
@@ -73,7 +65,6 @@ html, body, [class*="css"] {
     border-radius: 20px; padding: 3px 10px; font-weight: 500;
 }
 
-/* ── Content offset ─────────────────────────────────────── */
 section.main > div.block-container {
     padding-top: 124px !important;
     padding-left: 2rem !important;
@@ -81,7 +72,6 @@ section.main > div.block-container {
     max-width: 1400px;
 }
 
-/* ── Sidebar ─────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
     padding-top: 124px !important;
 }
@@ -90,7 +80,6 @@ section.main > div.block-container {
 }
 [data-testid="stSidebar"] .stRadio > div { gap: 10px !important; }
 
-/* ── Metric cards — theme-adaptive ──────────────────────── */
 .metric-card {
     background: rgba(128,128,128,0.06);
     border: 1px solid rgba(128,128,128,0.18);
@@ -101,7 +90,6 @@ section.main > div.block-container {
 .metric-value { font-size: 24px; font-weight: 700; color: #2E7D32; line-height: 1.1; }
 .metric-sub   { font-size: 11px; color: #888; margin-top: 5px; }
 
-/* ── Section headers ─────────────────────────────────────── */
 .section-header {
     font-size: 13px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.7px;
@@ -110,7 +98,6 @@ section.main > div.block-container {
     color: #2E7D32;
 }
 
-/* ── Buttons ─────────────────────────────────────────────── */
 .stButton > button {
     background-color: #1B5E20 !important; color: white !important;
     border: none !important; border-radius: 8px !important;
@@ -133,14 +120,13 @@ section.main > div.block-container {
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------
-# SESSION STATE — tokens stored so refresh doesn't log user out
+# SESSION STATE
 # ---------------------------------------------------------------
 
 for key in ("user", "access_token", "refresh_token"):
     if key not in st.session_state:
         st.session_state[key] = None
 
-# Restore session from stored tokens on page load / refresh
 if st.session_state["user"] is None and st.session_state["access_token"]:
     try:
         restored = supabase.auth.set_session(
@@ -220,6 +206,11 @@ def get_bin_states(bins: list) -> dict:
     res = supabase.rpc("get_bin_states", {"bins": bins}).execute()
     return {r["bin_code"]: r for r in res.data}
 
+def fetch_all(table: str) -> pd.DataFrame:
+    """Fetch all rows from a view/table, bypassing the 1000-row API limit."""
+    res = supabase.table(table).select("*").range(0, 50000).execute()
+    return pd.DataFrame(res.data)
+
 def bulk_insert(rows: list, label: str) -> list:
     failed = []
     for i in range(0, len(rows), 200):
@@ -264,21 +255,19 @@ def metric_card(label, value, sub=None):
 
 def fmt_num(n, decimals=0):
     try:
-        if pd.isna(n): return "—"
+        if n is None or pd.isna(n): return "—"
         return f"{n:,.{decimals}f}"
     except:
         return "—"
 
 PLOTLY_BASE = dict(
-    paper_bgcolor="rgba(0,0,0,0)",   # transparent — inherits page background
-    plot_bgcolor="rgba(0,0,0,0)",    # transparent — inherits page background
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
     margin=dict(t=48, b=16, l=16, r=16)
 )
-LEGEND_DEFAULT  = dict(bordercolor="rgba(128,128,128,0.2)", borderwidth=1)
-LEGEND_HORIZ    = dict(bordercolor="rgba(128,128,128,0.2)", borderwidth=1, orientation="h", y=1.12)
-
-# Alias kept so existing code using PLOTLY_LIGHT still works
 PLOTLY_LIGHT = PLOTLY_BASE
+LEGEND_DEFAULT = dict(bordercolor="rgba(128,128,128,0.2)", borderwidth=1)
+LEGEND_HORIZ   = dict(bordercolor="rgba(128,128,128,0.2)", borderwidth=1, orientation="h", y=1.12)
 GREEN_SEQ = ["#1B5E20","#2E7D32","#388E3C","#43A047","#66BB6A","#A5D6A7","#C8E6C9"]
 
 # ================================================================
@@ -292,9 +281,33 @@ if menu == "Dashboard":
     supplier_filter = st.sidebar.text_input("Supplier")
     variety_filter  = st.sidebar.text_input("Variety")
 
-    # ── Current stock ──────────────────────────────────────────
-    stock_res = supabase.table("v_current_stock").select("*").execute()
-    stock_df  = pd.DataFrame(stock_res.data)
+    # ── 1. KPIs via RPC — not subject to row limit ─────────────
+    st.markdown("<div class='section-header'>Current Stock Balance</div>", unsafe_allow_html=True)
+
+    try:
+        summary      = supabase.rpc("get_stock_summary").execute().data[0]
+        total_bins   = summary["total_bins"]   or 0
+        total_weight = summary["total_weight"] or 0
+        total_value  = summary["total_value"]  or 0
+        avg_rate     = summary["avg_rate"]     or 0
+        eligible_bins   = summary["eligible_bins"]   or 0
+        eligible_weight = summary["eligible_weight"] or 0
+    except Exception as e:
+        st.error(f"Could not load stock summary: {e}")
+        total_bins = total_weight = total_value = avg_rate = eligible_bins = eligible_weight = 0
+
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    with c1: metric_card("Bins In Stock",       fmt_num(total_bins))
+    with c2: metric_card("Total Weight (kg)",   fmt_num(total_weight, 2))
+    with c3: metric_card("Total Value (KES)",   fmt_num(total_value, 2))
+    with c4: metric_card("Avg Rate / kg",       fmt_num(avg_rate, 2), "Weighted avg")
+    with c5: metric_card("Eligible to Produce", fmt_num(eligible_bins), "14+ days in stock")
+    with c6: metric_card("Eligible Wt (kg)",    fmt_num(eligible_weight, 2))
+
+    # ── 2. Row-level data for charts — full fetch ──────────────
+    st.markdown("<div class='section-header'>Stock Breakdown</div>", unsafe_allow_html=True)
+
+    stock_df = fetch_all("v_current_stock")
 
     if not stock_df.empty:
         stock_df["received_date"]           = pd.to_datetime(stock_df["received_date"])
@@ -308,30 +321,6 @@ if menu == "Dashboard":
         filt = filt[filt["supplier"].str.contains(supplier_filter, case=False, na=False)]
     if variety_filter and not filt.empty:
         filt = filt[filt["variety"].str.contains(variety_filter, case=False, na=False)]
-
-    eligible = filt[filt["eligible_for_production"]] if not filt.empty else pd.DataFrame()
-
-    # ── KPIs ──────────────────────────────────────────────────
-    st.markdown("<div class='section-header'>Current Stock Balance</div>", unsafe_allow_html=True)
-
-    total_weight = filt["weight"].sum() if not filt.empty else 0
-    total_value  = filt["amount"].sum() if not filt.empty else 0
-    total_bins   = len(filt)
-    avg_rate     = (
-        (filt["weight"] * filt["rate"]).sum() / total_weight
-        if not filt.empty and total_weight > 0 else 0
-    )
-
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    with c1: metric_card("Bins In Stock",       fmt_num(total_bins))
-    with c2: metric_card("Total Weight (kg)",   fmt_num(total_weight, 2))
-    with c3: metric_card("Total Value (KES)",   fmt_num(total_value, 2))
-    with c4: metric_card("Avg Rate / kg",       fmt_num(avg_rate, 2), "Weighted avg")
-    with c5: metric_card("Eligible to Produce", fmt_num(len(eligible)), "14+ days in stock")
-    with c6: metric_card("Eligible Wt (kg)",    fmt_num(eligible["weight"].sum() if not eligible.empty else 0, 2))
-
-    # ── Breakdown ─────────────────────────────────────────────
-    st.markdown("<div class='section-header'>Stock Breakdown</div>", unsafe_allow_html=True)
 
     if not filt.empty:
         left, right = st.columns(2)
@@ -365,11 +354,10 @@ if menu == "Dashboard":
     else:
         st.info("No current stock data.")
 
-    # ── PCN Utilisation ───────────────────────────────────────
+    # ── 3. PCN Utilisation ────────────────────────────────────
     st.markdown("<div class='section-header'>PCN Utilisation</div>", unsafe_allow_html=True)
 
-    util_res = supabase.table("v_pcn_utilisation").select("*").execute()
-    util_df  = pd.DataFrame(util_res.data)
+    util_df = fetch_all("v_pcn_utilisation")
 
     if not util_df.empty:
         for col in ["total_bins_received","total_bins_produced","total_weight_received",
@@ -383,7 +371,6 @@ if menu == "Dashboard":
         if variety_filter:
             util_df = util_df[util_df["variety"].str.contains(variety_filter, case=False, na=False)]
 
-        # % utilisation based on bins
         util_df["utilisation_pct"] = (
             util_df["total_bins_produced"]
             / util_df["total_bins_received"].replace(0, pd.NA) * 100
@@ -415,8 +402,7 @@ if menu == "Dashboard":
                 name="Produced", marker_color="#1B5E20"
             ))
             fig_util.update_layout(
-                **PLOTLY_LIGHT,
-                legend=LEGEND_HORIZ,
+                **PLOTLY_LIGHT, legend=LEGEND_HORIZ,
                 title="Bins Received vs Produced per PCN",
                 barmode="overlay", xaxis_title="PCN", yaxis_title="Bins",
                 title_font_size=13,
@@ -440,11 +426,10 @@ if menu == "Dashboard":
     else:
         st.info("No PCN data available.")
 
-    # ── Aging Report ──────────────────────────────────────────
+    # ── 4. Aging Report ───────────────────────────────────────
     st.markdown("<div class='section-header'>Aging Report</div>", unsafe_allow_html=True)
 
-    aging_res = supabase.table("v_aging_report").select("*").execute()
-    aging_df  = pd.DataFrame(aging_res.data)
+    aging_df = fetch_all("v_aging_report")
 
     if not aging_df.empty:
         aging_df["days_held"] = pd.to_numeric(aging_df["days_held"], errors="coerce")
@@ -460,7 +445,7 @@ if menu == "Dashboard":
             ["All in stock","Aging (< 14 days)","Ready (14+ days)","Produced"],
             key="age_filter"
         )
-        age_map = {"Aging (< 14 days)": "Aging", "Ready (14+ days)": "Ready", "Produced": "Produced"}
+        age_map  = {"Aging (< 14 days)": "Aging", "Ready (14+ days)": "Ready", "Produced": "Produced"}
         age_disp = aging_df[aging_df["status"] != "Produced"].copy() if age_filter == "All in stock" \
                    else aging_df[aging_df["status"] == age_map[age_filter]].copy()
 
@@ -502,11 +487,10 @@ if menu == "Dashboard":
     else:
         st.info("No aging data available.")
 
-    # ── Daily Ledger ──────────────────────────────────────────
+    # ── 5. Daily Ledger ───────────────────────────────────────
     st.markdown("<div class='section-header'>Daily Ledger</div>", unsafe_allow_html=True)
 
-    ledger_res = supabase.table("v_daily_ledger").select("*").execute()
-    ledger_df  = pd.DataFrame(ledger_res.data)
+    ledger_df = fetch_all("v_daily_ledger")
 
     if not ledger_df.empty:
         ledger_df["date"] = pd.to_datetime(ledger_df["date"])
@@ -515,7 +499,7 @@ if menu == "Dashboard":
                     "running_balance_bins","running_balance_weight"]:
             ledger_df[col] = pd.to_numeric(ledger_df[col], errors="coerce")
 
-        d1, d2 = st.columns(2)
+        d1, d2    = st.columns(2)
         min_date  = ledger_df["date"].min().date()
         max_date  = ledger_df["date"].max().date()
         date_from = d1.date_input("From", value=min_date, min_value=min_date, max_value=max_date)
@@ -539,8 +523,7 @@ if menu == "Dashboard":
             line=dict(color="#1B5E20", width=2), marker=dict(size=4)
         ))
         fig_ledger.update_layout(
-            **PLOTLY_LIGHT,
-            legend=LEGEND_HORIZ,
+            **PLOTLY_LIGHT, legend=LEGEND_HORIZ,
             title="Daily Ledger: Received vs Produced + Running Balance",
             barmode="relative", xaxis_title="Date", yaxis_title="Bins",
             title_font_size=13,
@@ -572,7 +555,7 @@ if menu == "Dashboard":
     else:
         st.info("No ledger data available.")
 
-    # ── Historical Snapshot ───────────────────────────────────
+    # ── 6. Historical Snapshot ────────────────────────────────
     st.markdown("<div class='section-header'>Historical Stock Snapshot</div>", unsafe_allow_html=True)
 
     snap_date = st.date_input("View stock as of date", value=date.today())
@@ -585,7 +568,7 @@ if menu == "Dashboard":
             snap_df["weight"] = pd.to_numeric(snap_df["weight"], errors="coerce")
             snap_df["amount"] = pd.to_numeric(snap_df["amount"], errors="coerce")
             s1, s2, s3 = st.columns(3)
-            with s1: metric_card("Bins in Stock", fmt_num(len(snap_df)),      str(snap_date))
+            with s1: metric_card("Bins in Stock", fmt_num(len(snap_df)),             str(snap_date))
             with s2: metric_card("Weight (kg)",   fmt_num(snap_df["weight"].sum(), 2))
             with s3: metric_card("Value (KES)",   fmt_num(snap_df["amount"].sum(), 2))
             st.dataframe(snap_df, use_container_width=True, hide_index=True, height=350)
@@ -812,7 +795,7 @@ if menu == "PCN Lookup":
 
             st.dataframe(pcn_df, use_container_width=True, hide_index=True)
 
-            state_counts        = pcn_df["current_state"].value_counts().reset_index()
+            state_counts         = pcn_df["current_state"].value_counts().reset_index()
             state_counts.columns = ["state","count"]
             fig_pcn = px.pie(
                 state_counts, names="state", values="count",
