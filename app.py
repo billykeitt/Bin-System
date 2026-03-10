@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import uuid
 from datetime import datetime
-from supabase import create_client
+from supabase import create_client, Client
 import plotly.express as px
 import os
 from dotenv import load_dotenv
