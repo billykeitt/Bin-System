@@ -42,7 +42,6 @@ html, body, [class*="css"] {
 /* ── Hide default Streamlit chrome ── */
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
-header    { visibility: hidden; }
 
 /* ── Main content padding ── */
 section.main > div.block-container {
@@ -55,8 +54,12 @@ section.main > div.block-container {
 /* ══════════════════════════════════════
    SIDEBAR
 ══════════════════════════════════════ */
-[data-testid="stSidebar"] {
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] > div > div {
     background: #0F2417 !important;
+}
+[data-testid="stSidebar"] {
     min-width: 230px !important;
     max-width: 230px !important;
 }
