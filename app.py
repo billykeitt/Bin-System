@@ -20,110 +20,269 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 # PAGE CONFIG
 # -----------------------------
 
-st.set_page_config(layout="wide", page_title="Keitt Bin Ledger System")
+st.set_page_config(
+    layout="wide",
+    page_title="Keitt Bin Ledger",
+    page_icon="🌿",
+    initial_sidebar_state="expanded"
+)
+
+# ================================================================
+# GLOBAL CSS
+# ================================================================
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
 }
 
-.keitt-navbar {
-    position: fixed;
-    top: 50px;
-    left: 0; right: 0;
-    height: 56px;
-    background: var(--background-color, #FFFFFF);
-    border-bottom: 2px solid rgba(128,128,128,0.15);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    z-index: 999;
-    display: flex;
-    align-items: center;
-    padding: 0 24px;
-    gap: 12px;
-}
-.keitt-navbar-logo {
-    width: 34px; height: 34px;
-    background: #1B5E20;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 17px; flex-shrink: 0;
-}
-.keitt-navbar-title {
-    font-size: 16px; font-weight: 700;
-    color: #2E7D32; letter-spacing: -0.2px;
-}
-.keitt-navbar-subtitle {
-    font-size: 11px; color: #888; line-height: 1; margin-top: 1px;
-}
-.keitt-navbar-sep { width: 1px; height: 26px; background: rgba(128,128,128,0.25); margin: 0 6px; }
-.keitt-navbar-tag {
-    font-size: 11px; color: #2E7D32;
-    background: rgba(46,125,50,0.1);
-    border-radius: 20px; padding: 3px 10px; font-weight: 500;
-}
+/* ── Hide default Streamlit chrome ── */
+#MainMenu { visibility: hidden; }
+footer    { visibility: hidden; }
+header    { visibility: hidden; }
 
+/* ── Main content padding ── */
 section.main > div.block-container {
-    padding-top: 124px !important;
-    padding-left: 2rem !important;
-    padding-right: 2rem !important;
-    max-width: 1400px;
+    padding-top: 2rem !important;
+    padding-left: 2.5rem !important;
+    padding-right: 2.5rem !important;
+    max-width: 1440px;
 }
 
+/* ══════════════════════════════════════
+   SIDEBAR
+══════════════════════════════════════ */
 [data-testid="stSidebar"] {
-    padding-top: 124px !important;
+    background: #0F2417 !important;
+    min-width: 230px !important;
+    max-width: 230px !important;
 }
-[data-testid="stSidebar"] .stRadio label {
-    font-size: 14px !important; padding: 4px 0 !important;
+[data-testid="stSidebar"] > div:first-child {
+    padding: 0 !important;
 }
-[data-testid="stSidebar"] .stRadio > div { gap: 10px !important; }
 
+/* ── Sidebar brand header ── */
+.sb-brand {
+    display: flex; align-items: center; gap: 11px;
+    padding: 22px 20px 18px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 8px;
+}
+.sb-brand-icon {
+    width: 36px; height: 36px; border-radius: 9px;
+    background: #2E7D32;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+.sb-brand-text { line-height: 1.2; }
+.sb-brand-title {
+    font-size: 14px; font-weight: 700;
+    color: #FFFFFF; letter-spacing: -0.1px;
+}
+.sb-brand-sub {
+    font-size: 10px; color: rgba(255,255,255,0.4);
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* ── Nav section label ── */
+.sb-section-label {
+    font-size: 9.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: rgba(255,255,255,0.3);
+    padding: 14px 20px 6px 20px;
+}
+
+/* ── Nav items (radio overrides) ── */
+[data-testid="stSidebar"] .stRadio > label { display: none !important; }
+[data-testid="stSidebar"] .stRadio > div {
+    gap: 1px !important;
+    padding: 0 10px !important;
+}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] { gap: 1px !important; }
+[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"] {
+    background: transparent !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    cursor: pointer !important;
+    transition: background 0.15s !important;
+}
+[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"]:hover {
+    background: rgba(255,255,255,0.07) !important;
+}
+[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"] > div:first-child {
+    display: none !important;
+}
+[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"] span {
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
+    color: rgba(255,255,255,0.65) !important;
+}
+[data-testid="stSidebar"] .stRadio label[aria-checked="true"][data-baseweb="radio"] {
+    background: rgba(46,125,50,0.35) !important;
+}
+[data-testid="stSidebar"] .stRadio label[aria-checked="true"][data-baseweb="radio"] span {
+    color: #81C784 !important;
+    font-weight: 600 !important;
+}
+
+/* ── Sidebar divider ── */
+.sb-divider {
+    border: none; border-top: 1px solid rgba(255,255,255,0.08);
+    margin: 10px 20px;
+}
+
+/* ── User card at bottom ── */
+.sb-user-card {
+    margin: 8px 10px;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+}
+.sb-user-name {
+    font-size: 12px; font-weight: 600; color: #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 170px;
+}
+.sb-user-email {
+    font-size: 10.5px; color: rgba(255,255,255,0.4);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 170px; margin-top: 1px;
+}
+.sb-role-badge {
+    display: inline-block; margin-top: 7px;
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; padding: 2px 8px; border-radius: 20px;
+}
+.sb-role-admin    { background: rgba(239,108,0,0.25);  color: #FFB74D; }
+.sb-role-operator { background: rgba(46,125,50,0.35);  color: #81C784; }
+.sb-role-viewer   { background: rgba(33,150,243,0.25); color: #64B5F6; }
+
+/* ── Sidebar logout button ── */
+[data-testid="stSidebar"] .stButton > button {
+    background: rgba(255,255,255,0.06) !important;
+    color: rgba(255,255,255,0.5) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    padding: 5px 14px !important;
+    width: 100%;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(255,80,80,0.18) !important;
+    color: #FF8A80 !important;
+    border-color: rgba(255,80,80,0.3) !important;
+}
+
+/* ══════════════════════════════════════
+   PAGE HEADER (per-page, not fixed)
+══════════════════════════════════════ */
+.page-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 0 20px 0;
+    border-bottom: 1px solid rgba(128,128,128,0.15);
+    margin-bottom: 28px;
+}
+.page-header-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(46,125,50,0.12);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+}
+.page-header-title {
+    font-size: 20px; font-weight: 700;
+    color: inherit; letter-spacing: -0.3px; line-height: 1.1;
+}
+.page-header-sub {
+    font-size: 12px; color: #888; margin-top: 2px;
+}
+
+/* ══════════════════════════════════════
+   METRIC CARDS
+══════════════════════════════════════ */
 .metric-card {
     background: rgba(128,128,128,0.06);
-    border: 1px solid rgba(128,128,128,0.18);
-    border-radius: 12px; padding: 18px 14px; text-align: center;
+    border: 1px solid rgba(128,128,128,0.15);
+    border-radius: 12px; padding: 18px 16px; text-align: center;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.metric-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
-.metric-value { font-size: 24px; font-weight: 700; color: #2E7D32; line-height: 1.1; }
-.metric-sub   { font-size: 11px; color: #888; margin-top: 5px; }
+.metric-label {
+    font-size: 10.5px; color: #888;
+    text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 6px;
+}
+.metric-value {
+    font-size: 24px; font-weight: 700; color: #2E7D32; line-height: 1.1;
+}
+.metric-sub { font-size: 11px; color: #888; margin-top: 5px; }
 
+/* ══════════════════════════════════════
+   SECTION HEADER
+══════════════════════════════════════ */
 .section-header {
-    font-size: 13px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.7px;
-    border-bottom: 2px solid rgba(46,125,50,0.25);
+    font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    border-bottom: 2px solid rgba(46,125,50,0.2);
     padding-bottom: 8px; margin: 32px 0 16px 0;
     color: #2E7D32;
 }
 
-.stButton > button {
+/* ══════════════════════════════════════
+   BUTTONS (main content area)
+══════════════════════════════════════ */
+section.main .stButton > button {
     background-color: #1B5E20 !important; color: white !important;
     border: none !important; border-radius: 8px !important;
-    font-weight: 600 !important; padding: 8px 20px !important;
+    font-weight: 600 !important; padding: 8px 22px !important;
+    font-size: 13px !important;
 }
-.stButton > button:hover { background-color: #2E7D32 !important; }
-</style>
+section.main .stButton > button:hover {
+    background-color: #2E7D32 !important;
+}
 
-<div class="keitt-navbar">
-    <div class="keitt-navbar-logo">🌿</div>
-    <div>
-        <div class="keitt-navbar-title">Keitt Bin Ledger</div>
-        <div class="keitt-navbar-subtitle">Warehouse Inventory &amp; Production Flow</div>
-    </div>
-    <div class="keitt-navbar-sep"></div>
-    <div class="keitt-navbar-tag">📦 Inventory</div>
-    <div class="keitt-navbar-tag">🔁 Traceability</div>
-    <div class="keitt-navbar-tag">🏭 Production</div>
-</div>
+/* ══════════════════════════════════════
+   LOGIN PAGE
+══════════════════════════════════════ */
+.login-card {
+    background: rgba(128,128,128,0.05);
+    border: 1px solid rgba(128,128,128,0.15);
+    border-radius: 16px;
+    padding: 40px 36px 32px 36px;
+    margin-top: 20px;
+}
+.login-logo {
+    width: 52px; height: 52px; border-radius: 14px;
+    background: #1B5E20;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; margin: 0 auto 16px auto;
+}
+.login-title {
+    font-size: 22px; font-weight: 700;
+    text-align: center; letter-spacing: -0.3px; margin-bottom: 4px;
+}
+.login-sub {
+    font-size: 13px; color: #888;
+    text-align: center; margin-bottom: 28px;
+}
+.access-denied {
+    background: rgba(211,47,47,0.08);
+    border: 1px solid rgba(211,47,47,0.25);
+    border-radius: 10px; padding: 16px 20px;
+    color: #EF9A9A; font-size: 13px; text-align: center;
+    margin-top: 16px;
+}
+</style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------
+# ================================================================
 # SESSION STATE
-# ---------------------------------------------------------------
+# ================================================================
 
-for key in ("user", "access_token", "refresh_token"):
+for key in ("user", "access_token", "refresh_token", "role"):
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -135,63 +294,168 @@ if st.session_state["user"] is None and st.session_state["access_token"]:
         )
         if restored.user:
             st.session_state["user"] = restored.user
+            meta = restored.user.user_metadata or {}
+            st.session_state["role"] = meta.get("role", "viewer")
     except Exception:
         st.session_state["access_token"]  = None
         st.session_state["refresh_token"] = None
 
-# ---------------------------------------------------------------
-# AUTH
-# ---------------------------------------------------------------
+# ================================================================
+# ROLE HELPERS
+# ================================================================
+
+ROLE_LABELS = {"admin": "Admin", "operator": "Operator", "viewer": "Viewer"}
+
+def get_role() -> str:
+    return st.session_state.get("role") or "viewer"
+
+def can_write() -> bool:
+    """Operators and admins can insert/modify data."""
+    return get_role() in ("admin", "operator")
+
+def require_write():
+    """Call at top of any write page. Stops rendering if viewer."""
+    if not can_write():
+        st.markdown("""
+        <div class='access-denied'>
+            🔒 <b>Access Denied</b><br>
+            Your account has read-only (Viewer) access.<br>
+            Contact your admin to request Operator access.
+        </div>""", unsafe_allow_html=True)
+        st.stop()
+
+# ================================================================
+# LOGIN SCREEN
+# ================================================================
 
 def login_screen():
-    _, col, _ = st.columns([1, 1.1, 1])
+    st.markdown("<br>", unsafe_allow_html=True)
+    _, col, _ = st.columns([1, 1, 1])
     with col:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("### 🌿 Keitt Bin Ledger")
-        st.markdown("Sign in to continue")
-        email    = st.text_input("Email",    placeholder="you@example.com")
-        password = st.text_input("Password", type="password", placeholder="••••••••")
+        st.markdown("""
+        <div class='login-card'>
+            <div class='login-logo'>🌿</div>
+            <div class='login-title'>Keitt Bin Ledger</div>
+            <div class='login-sub'>Sign in to your account</div>
+        </div>""", unsafe_allow_html=True)
+
+        # Render inputs outside the HTML card (Streamlit can't render widgets inside HTML)
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        email    = st.text_input("Email",    placeholder="you@example.com",  label_visibility="collapsed")
+        password = st.text_input("Password", placeholder="Password", type="password", label_visibility="collapsed")
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
         if st.button("Sign In", use_container_width=True):
             try:
                 result = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 if result.user:
+                    meta = result.user.user_metadata or {}
                     st.session_state["user"]          = result.user
                     st.session_state["access_token"]  = result.session.access_token
                     st.session_state["refresh_token"] = result.session.refresh_token
+                    st.session_state["role"]          = meta.get("role", "viewer")
                     st.rerun()
             except Exception:
-                st.error("Invalid email or password")
+                st.error("Invalid email or password. Please try again.")
+
+        st.markdown(
+            "<div style='text-align:center;margin-top:16px;font-size:11px;color:#888'>"
+            "Contact your admin if you need access</div>",
+            unsafe_allow_html=True
+        )
 
 if st.session_state["user"] is None:
     login_screen()
     st.stop()
 
-# ---------------------------------------------------------------
+# ================================================================
 # SIDEBAR
-# ---------------------------------------------------------------
+# ================================================================
 
-st.sidebar.markdown("**Menu**")
-menu = st.sidebar.radio(
-    "", [
-        "Dashboard",
-        "Receive", "Produce", "Adjust",
-        "Reports",
-        "Bin History Lookup", "PCN Lookup"
-    ],
-    label_visibility="collapsed"
-)
-st.sidebar.markdown("---")
-st.sidebar.markdown(
-    f"<small style='color:#999'>Signed in as<br><b>{st.session_state['user'].email}</b></small>",
-    unsafe_allow_html=True
-)
-st.sidebar.markdown("")
-if st.sidebar.button("Logout"):
+role      = get_role()
+user_email = st.session_state["user"].email
+# Derive a display name from the email (part before @)
+display_name = user_email.split("@")[0].replace(".", " ").replace("_", " ").title()
+
+# Brand header
+st.sidebar.markdown(f"""
+<div class='sb-brand'>
+    <div class='sb-brand-icon'>🌿</div>
+    <div class='sb-brand-text'>
+        <div class='sb-brand-title'>Keitt Bin Ledger</div>
+        <div class='sb-brand-sub'>Warehouse System</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Nav — operators/admins see write pages; viewers only see read pages
+st.sidebar.markdown("<div class='sb-section-label'>Navigation</div>", unsafe_allow_html=True)
+
+if can_write():
+    all_pages = [
+        "📊  Dashboard",
+        "📥  Receive",
+        "🏭  Produce",
+        "⚖️  Adjust",
+        "📈  Reports",
+        "🔍  Bin Lookup",
+        "📋  PCN Lookup",
+    ]
+else:
+    all_pages = [
+        "📊  Dashboard",
+        "📈  Reports",
+        "🔍  Bin Lookup",
+        "📋  PCN Lookup",
+    ]
+
+page_selected = st.sidebar.radio("nav", all_pages, label_visibility="collapsed")
+# Strip icon prefix to get clean menu key
+menu = page_selected.split("  ", 1)[-1].strip()
+# Remap display names back to original keys used in page routing
+_menu_map = {
+    "Dashboard": "Dashboard",
+    "Receive":   "Receive",
+    "Produce":   "Produce",
+    "Adjust":    "Adjust",
+    "Reports":   "Reports",
+    "Bin Lookup": "Bin History Lookup",
+    "PCN Lookup": "PCN Lookup",
+}
+menu = _menu_map.get(menu, menu)
+
+# User card + logout
+st.sidebar.markdown("<hr class='sb-divider'>", unsafe_allow_html=True)
+role_css = f"sb-role-{role}"
+st.sidebar.markdown(f"""
+<div class='sb-user-card'>
+    <div class='sb-user-name'>{display_name}</div>
+    <div class='sb-user-email'>{user_email}</div>
+    <span class='sb-role-badge {role_css}'>{ROLE_LABELS.get(role, role)}</span>
+</div>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+if st.sidebar.button("Sign Out"):
     supabase.auth.sign_out()
-    st.session_state["user"]          = None
-    st.session_state["access_token"]  = None
-    st.session_state["refresh_token"] = None
+    for k in ("user", "access_token", "refresh_token", "role"):
+        st.session_state[k] = None
     st.rerun()
+
+# ================================================================
+# PAGE HEADER HELPER
+# ================================================================
+
+def page_header(icon: str, title: str, subtitle: str = ""):
+    sub_html = f"<div class='page-header-sub'>{subtitle}</div>" if subtitle else ""
+    st.markdown(f"""
+    <div class='page-header'>
+        <div class='page-header-icon'>{icon}</div>
+        <div>
+            <div class='page-header-title'>{title}</div>
+            {sub_html}
+        </div>
+    </div>""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------
 # UTILS
@@ -280,6 +544,7 @@ GREEN_SEQ = ["#1B5E20","#2E7D32","#388E3C","#43A047","#66BB6A","#A5D6A7","#C8E6C
 # ================================================================
 
 if menu == "Dashboard":
+    page_header("📊", "Dashboard", "Live stock summary and operational overview")
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**Filters**")
@@ -584,7 +849,8 @@ if menu == "Dashboard":
 # ================================================================
 
 if menu == "Receive":
-    st.markdown("<div class='section-header'>Receive Bins</div>", unsafe_allow_html=True)
+    page_header("📥", "Receive Bins", "Upload and register incoming bin deliveries")
+    require_write()
     file = st.file_uploader("Upload Receive Excel", type="xlsx")
 
     if file:
@@ -665,7 +931,8 @@ if menu == "Receive":
 # ================================================================
 
 if menu == "Produce":
-    st.markdown("<div class='section-header'>Produce Bins</div>", unsafe_allow_html=True)
+    page_header("🏭", "Produce Bins", "Record bins sent through production")
+    require_write()
     file = st.file_uploader("Upload Production Excel", type="xlsx")
 
     if file:
@@ -737,7 +1004,8 @@ if menu == "Produce":
 # ================================================================
 
 if menu == "Adjust":
-    st.markdown("<div class='section-header'>Adjust Stock</div>", unsafe_allow_html=True)
+    page_header("⚖️", "Adjust Stock", "Remove bins from stock via adjustment")
+    require_write()
     file = st.file_uploader("Upload Adjustment Excel", type="xlsx")
 
     if file:
@@ -806,7 +1074,7 @@ if menu == "Adjust":
 # ================================================================
 
 if menu == "Bin History Lookup":
-    st.markdown("<div class='section-header'>Bin History Lookup</div>", unsafe_allow_html=True)
+    page_header("🔍", "Bin History Lookup", "Full transaction history for a single bin")
     bin_lookup = st.text_input("Enter Bin Code")
 
     if bin_lookup:
@@ -846,7 +1114,7 @@ if menu == "Bin History Lookup":
 # ================================================================
 
 if menu == "PCN Lookup":
-    st.markdown("<div class='section-header'>PCN Lookup</div>", unsafe_allow_html=True)
+    page_header("📋", "PCN Lookup", "All bins and utilisation for a specific PCN")
     pcn_lookup = st.text_input("Enter PCN")
 
     if pcn_lookup:
@@ -891,7 +1159,7 @@ if menu == "PCN Lookup":
 # ================================================================
 
 if menu == "Reports":
-    st.markdown("<div class='section-header'>Reports</div>", unsafe_allow_html=True)
+    page_header("📈", "Reports", "PCN closure, weekly & monthly summaries, bulk bin lookup")
 
     report_tab = st.radio(
         "", ["PCN Closure", "Weekly Summary", "Monthly Summary", "Bulk Bin Lookup"],
