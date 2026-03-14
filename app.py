@@ -403,10 +403,7 @@ if can_write():
         "📈  Reports",
         "🔍  Bin Lookup",
         "📋  PCN Lookup",
-<<<<<<< HEAD
         "🔧  Reconcile",
-=======
->>>>>>> 1ba0970d8e791d50b58939957115b7935f08a72b
     ]
 else:
     all_pages = [
@@ -421,7 +418,6 @@ page_selected = st.sidebar.radio("nav", all_pages, label_visibility="collapsed")
 menu = page_selected.split("  ", 1)[-1].strip()
 # Remap display names back to original keys used in page routing
 _menu_map = {
-<<<<<<< HEAD
     "Dashboard":  "Dashboard",
     "Receive":    "Receive",
     "Produce":    "Produce",
@@ -430,15 +426,6 @@ _menu_map = {
     "Bin Lookup": "Bin History Lookup",
     "PCN Lookup": "PCN Lookup",
     "Reconcile":  "Reconcile",
-=======
-    "Dashboard": "Dashboard",
-    "Receive":   "Receive",
-    "Produce":   "Produce",
-    "Adjust":    "Adjust",
-    "Reports":   "Reports",
-    "Bin Lookup": "Bin History Lookup",
-    "PCN Lookup": "PCN Lookup",
->>>>>>> 1ba0970d8e791d50b58939957115b7935f08a72b
 }
 menu = _menu_map.get(menu, menu)
 
@@ -924,7 +911,6 @@ if menu == "Dashboard":
 if menu == "Receive":
     page_header("📥", "Receive Bins", "Upload and register incoming bin deliveries")
     require_write()
-<<<<<<< HEAD
 
     # ── Import mode toggle ────────────────────────────────────
     import_mode = st.radio(
@@ -939,8 +925,6 @@ if menu == "Receive":
     )
     is_opening_stock = import_mode.startswith("Opening Stock")
 
-=======
->>>>>>> 1ba0970d8e791d50b58939957115b7935f08a72b
     file = st.file_uploader("Upload Receive Excel", type="xlsx")
 
     if file:
