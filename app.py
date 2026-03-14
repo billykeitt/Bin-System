@@ -502,6 +502,83 @@ def bulk_insert(rows: list, label: str) -> list:
                         failed.append(row.get("bin_code"))
     return failed
 
+def log_produce_failures(
+    not_received: list,
+    states: dict,
+    stock_list: list,
+    df: pd.DataFrame,
+    uploaded_by: str
+):
+    """
+    Log bins that failed produce validation into produce_staging.
+    Called automatically after every produce upload attempt.
+    Only logs bins not already pending in staging.
+    """
+    if not not_received:
+        return
+
+    # Fetch existing pending staged bins to avoid duplicate entries
+    try:
+        existing = supabase.table("produce_staging")\
+            .select("bin_code")\
+            .eq("status", "pending")\
+            .execute()
+        already_staged = {r["bin_code"] for r in existing.data}
+    except Exception:
+        already_staged = set()
+
+    staging_rows = []
+    for bin_code in not_received:
+        if bin_code in already_staged:
+            continue
+
+        # Get attempt date and batch from the file
+        bin_rows = df[df["BIN"] == bin_code]
+        attempt_date = None
+        batch_no     = None
+        machine_id   = None
+        if not bin_rows.empty:
+            r = bin_rows.iloc[0]
+            attempt_date = parse_date(r.get("DATE") if hasattr(r, "get") else getattr(r, "DATE", None))
+            batch_no     = clean(getattr(r, "BATCHNO",   None) if hasattr(r, "BATCHNO")   else r.get("BATCHNO"))
+            machine_id   = clean(getattr(r, "MACHINEID", None) if hasattr(r, "MACHINEID") else r.get("MACHINEID"))
+
+        # Determine fail reason
+        state = states.get(bin_code, {}).get("state")
+        if state is None:
+            fail_reason = "Never received"
+        elif state == "PRODUCED":
+            fail_reason = "Already produced"
+        elif state == "CONSUMED":
+            fail_reason = "Already adjusted out"
+        else:
+            fail_reason = f"State: {state}"
+
+        # Best fuzzy match at time of staging
+        candidates  = fuzzy_candidates(bin_code, stock_list, top_n=1, min_similarity=60)
+        fuzzy_match = candidates[0]["bin_code"] if candidates else None
+        fuzzy_score = candidates[0]["similarity"] if candidates else None
+
+        staging_rows.append({
+            "staged_by":    uploaded_by,
+            "bin_code":     bin_code,
+            "attempt_date": attempt_date,
+            "batch_no":     batch_no,
+            "machine_id":   machine_id,
+            "fail_reason":  fail_reason,
+            "fuzzy_match":  fuzzy_match,
+            "fuzzy_score":  fuzzy_score,
+            "status":       "pending",
+        })
+
+    if staging_rows:
+        try:
+            for i in range(0, len(staging_rows), 200):
+                supabase.table("produce_staging").insert(staging_rows[i:i+200]).execute()
+        except Exception as e:
+            pass  # staging failure should never block the main produce flow
+    return failed
+
 def show_errors(errors: list, failed_bins: list):
     if errors or failed_bins:
         st.warning("⚠️ Issues encountered")
@@ -1139,6 +1216,25 @@ if menu == "Produce":
         with p3: metric_card("Dupes in File", fmt_num(len(dupes_in_file)), "⚠️ Skipped")
         with p4: metric_card("Not in Stock",  fmt_num(len(not_received)),  "⚠️ Review")
 
+        # ── Auto-log failures to produce_staging ─────────────
+        # Do this regardless of whether operator approves fuzzy matches —
+        # we always want a record of what production attempted
+        if not_received:
+            # Need stock_list for fuzzy scoring — fetch if not already fetched
+            if "stock_list" not in dir():
+                _stock_df  = fetch_all("v_current_stock")
+                _stock_list = _stock_df[["bin_code","pcn","supplier","variety","days_in_stock"]]\
+                              .to_dict("records") if not _stock_df.empty else []
+            else:
+                _stock_list = stock_list
+            log_produce_failures(
+                not_received  = not_received,
+                states        = states,
+                stock_list    = _stock_list,
+                df            = df,
+                uploaded_by   = user_email
+            )
+
         # ── Fuzzy match for failed bins ───────────────────────
         if not_received:
             st.markdown("---")
@@ -1728,19 +1824,126 @@ if menu == "Reconcile":
         st.stop()
 
     recon_tab = st.radio(
-        "", ["Unmatched Bin Report", "Bin Code Correction", "Correction History"],
+        "", [
+            "🔗 Cross-Reference",
+            "📋 Unmatched Receives",
+            "⚠️ Failed Produce Attempts",
+            "🔧 Bin Code Correction",
+            "📜 Correction History"
+        ],
         horizontal=True, label_visibility="collapsed"
     )
 
+    # ── Excel download helper (local to this page) ────────────
+    def recon_excel(df: pd.DataFrame, filename: str):
+        import io
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as w:
+            df.to_excel(w, index=False)
+        st.download_button("⬇️ Export to Excel", data=buf.getvalue(),
+                           file_name=filename,
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
     # ──────────────────────────────────────────────────────────
-    # TAB 1: UNMATCHED BIN REPORT
+    # TAB 1: CROSS-REFERENCE (both sides together)
     # ──────────────────────────────────────────────────────────
-    if recon_tab == "Unmatched Bin Report":
+    if recon_tab == "🔗 Cross-Reference":
+        st.markdown("#### Unmatched Receives × Failed Produce Attempts")
+        st.caption(
+            "Bins on the left were received but never produced (14+ days). "
+            "Bins on the right were attempted in production but not found in stock. "
+            "Rows where both sides appear are your most likely typo pairs."
+        )
+
+        try:
+            crossref = fetch_all("v_reconcile_crossref")
+        except Exception:
+            st.error("Run staging.sql in Supabase first to create the required view.")
+            st.stop()
+
+        if crossref.empty:
+            st.success("✅ Nothing to reconcile — no unmatched receives or failed produce attempts.")
+        else:
+            crossref["days_in_stock"] = pd.to_numeric(crossref["days_in_stock"], errors="coerce")
+            crossref["rcv_weight"]    = pd.to_numeric(crossref["rcv_weight"],    errors="coerce")
+            crossref["fuzzy_score"]   = pd.to_numeric(crossref["fuzzy_score"],   errors="coerce")
+
+            # Re-score similarity in Python (more accurate than DB rough score)
+            def rescore(row):
+                if pd.notna(row.get("rcv_bin")) and pd.notna(row.get("prod_bin")):
+                    return similarity_pct(str(row["rcv_bin"]), str(row["prod_bin"]))
+                return row.get("fuzzy_score")
+            crossref["similarity"] = crossref.apply(rescore, axis=1)
+
+            # Summary KPIs
+            both   = crossref[crossref["match_type"] == "BOTH SIDES"]
+            rcv_only  = crossref[crossref["match_type"] == "RECEIVE ONLY"]
+            prod_only = crossref[crossref["match_type"] == "PRODUCE ONLY"]
+
+            k1, k2, k3, k4 = st.columns(4)
+            with k1: metric_card("Matched Pairs",       fmt_num(len(both)),      "Both sides found")
+            with k2: metric_card("Receive Only",        fmt_num(len(rcv_only)),  "No produce attempt")
+            with k3: metric_card("Produce Only",        fmt_num(len(prod_only)), "No receive match")
+            with k4: metric_card("Total to Investigate",fmt_num(len(crossref)))
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Colour code by match type
+            def highlight_match(row):
+                mt = row.get("match_type","")
+                if mt == "BOTH SIDES":   return ["background:rgba(46,125,50,0.12)"]  * len(row)
+                if mt == "PRODUCE ONLY": return ["background:rgba(255,152,0,0.10)"]  * len(row)
+                return [""] * len(row)
+
+            display_cols = {
+                "match_type":    "Type",
+                "similarity":    "Similarity %",
+                "rcv_bin":       "Receive Bin",
+                "rcv_date":      "Rcv Date",
+                "days_in_stock": "Days",
+                "rcv_pcn":       "PCN",
+                "rcv_supplier":  "Supplier",
+                "rcv_variety":   "Variety",
+                "rcv_weight":    "Weight",
+                "prod_bin":      "Produce Bin",
+                "prod_date":     "Prod Date",
+                "batch_no":      "Batch",
+                "staged_by":     "Uploaded By",
+                "fail_reason":   "Fail Reason",
+            }
+            disp = crossref[[c for c in display_cols if c in crossref.columns]]\
+                   .rename(columns=display_cols)\
+                   .sort_values(["Type","Similarity %"], ascending=[True, False])
+
+            st.dataframe(
+                disp.style.apply(highlight_match, axis=1),
+                use_container_width=True, hide_index=True, height=460
+            )
+            recon_excel(disp, f"crossref_{date.today()}.xlsx")
+
+            # Quick action guidance
+            if len(both) > 0:
+                st.markdown("---")
+                st.markdown(
+                    "**Green rows (Both Sides)** — high confidence typo pairs. "
+                    "Verify physically, then use the **Bin Code Correction** tab to fix the receive side. "
+                    "Then re-upload the produce file for those bins."
+                )
+            if len(prod_only) > 0:
+                st.markdown(
+                    "**Orange rows (Produce Only)** — production attempted a bin with no similar receive. "
+                    "May be a completely wrong code or a bin that was never actually received. "
+                    "Investigate physically before correcting."
+                )
+
+    # ──────────────────────────────────────────────────────────
+    # TAB 2: UNMATCHED RECEIVES
+    # ──────────────────────────────────────────────────────────
+    elif recon_tab == "📋 Unmatched Receives":
         st.markdown("#### Bins in stock beyond 14 days with no production")
         st.caption(
             "These bins should have gone to production by now but haven't. "
-            "Likely causes: intake typo (wrong bin code recorded at receive) or "
-            "production typo (bin was produced under a different code)."
+            "Likely causes: intake typo or production used a different bin code."
         )
 
         unmatched = fetch_all("v_unmatched_bins")
@@ -1751,11 +1954,10 @@ if menu == "Reconcile":
             unmatched["days_in_stock"] = pd.to_numeric(unmatched["days_in_stock"], errors="coerce")
             unmatched["weight"]        = pd.to_numeric(unmatched["weight"],        errors="coerce")
 
-            # Filters
             f1, f2, f3 = st.columns(3)
-            min_days    = f1.number_input("Min days in stock", value=14, min_value=1, step=1)
-            sup_filter  = f2.text_input("Supplier", key="um_sup")
-            pcn_filter  = f3.text_input("PCN",      key="um_pcn")
+            min_days   = f1.number_input("Min days in stock", value=14, min_value=1, step=1)
+            sup_filter = f2.text_input("Supplier", key="um_sup")
+            pcn_filter = f3.text_input("PCN",      key="um_pcn")
 
             filt = unmatched[unmatched["days_in_stock"] >= min_days]
             if sup_filter:
@@ -1764,23 +1966,21 @@ if menu == "Reconcile":
                 filt = filt[filt["pcn"].str.contains(pcn_filter, case=False, na=False)]
 
             u1, u2, u3 = st.columns(3)
-            with u1: metric_card("Unmatched Bins",   fmt_num(len(filt)))
-            with u2: metric_card("Total Weight",     fmt_num(filt["weight"].sum(), 1) + " kg")
-            with u3: metric_card("Oldest Bin",       fmt_num(filt["days_in_stock"].max()) + " days")
+            with u1: metric_card("Unmatched Bins", fmt_num(len(filt)))
+            with u2: metric_card("Total Weight",   fmt_num(filt["weight"].sum(), 1) + " kg")
+            with u3: metric_card("Oldest Bin",     fmt_num(filt["days_in_stock"].max()) + " days")
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # Fuzzy suggestion column — find similar bin codes in stock for each unmatched bin
             stock_df   = fetch_all("v_current_stock")
             stock_list = stock_df[["bin_code","pcn","supplier","variety"]]\
                          .to_dict("records") if not stock_df.empty else []
 
             def get_suggestion(bin_code):
                 others = [s for s in stock_list if s["bin_code"] != bin_code]
-                candidates = fuzzy_candidates(bin_code, others, top_n=1, min_similarity=70)
-                if candidates:
-                    c = candidates[0]
-                    return f"{c['bin_code']} ({c['similarity']}%)"
+                cands  = fuzzy_candidates(bin_code, others, top_n=1, min_similarity=70)
+                if cands:
+                    return f"{cands[0]['bin_code']} ({cands[0]['similarity']}%)"
                 return "—"
 
             filt = filt.copy()
@@ -1800,27 +2000,120 @@ if menu == "Reconcile":
             }
             disp = filt[[c for c in display_cols if c in filt.columns]].rename(columns=display_cols)
             st.dataframe(disp, use_container_width=True, hide_index=True, height=420)
-
-            # Export
-            import io
-            buf = io.BytesIO()
-            with pd.ExcelWriter(buf, engine="openpyxl") as w:
-                disp.to_excel(w, index=False)
-            st.download_button(
-                "⬇️ Export to Excel", data=buf.getvalue(),
-                file_name=f"unmatched_bins_{date.today()}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            recon_excel(disp, f"unmatched_bins_{date.today()}.xlsx")
 
     # ──────────────────────────────────────────────────────────
-    # TAB 2: BIN CODE CORRECTION
+    # TAB 3: FAILED PRODUCE ATTEMPTS
     # ──────────────────────────────────────────────────────────
-    elif recon_tab == "Bin Code Correction":
+    elif recon_tab == "⚠️ Failed Produce Attempts":
+        st.markdown("#### Bins production attempted but couldn't find in stock")
+        st.caption(
+            "Every bin that failed the produce upload is logged here. "
+            "Once investigated and resolved, mark it as resolved or dismissed."
+        )
+
+        try:
+            staging_res = supabase.table("produce_staging")\
+                .select("*").order("staged_at", desc=True).range(0, 5000).execute()
+            staging_df = pd.DataFrame(staging_res.data)
+        except Exception:
+            st.error("Run staging.sql in Supabase first.")
+            st.stop()
+
+        if staging_df.empty:
+            st.info("No failed produce attempts logged yet.")
+        else:
+            # Filter
+            sf1, sf2 = st.columns(2)
+            status_f = sf1.selectbox("Status", ["pending","resolved","dismissed","all"], index=0)
+            bin_f    = sf2.text_input("Bin code search", key="stg_bin")
+
+            filt = staging_df if status_f == "all" else staging_df[staging_df["status"] == status_f]
+            if bin_f:
+                filt = filt[filt["bin_code"].str.contains(bin_f, case=False, na=False)]
+
+            s1, s2, s3 = st.columns(3)
+            with s1: metric_card("Pending",   fmt_num(len(staging_df[staging_df["status"]=="pending"])))
+            with s2: metric_card("Resolved",  fmt_num(len(staging_df[staging_df["status"]=="resolved"])))
+            with s3: metric_card("Dismissed", fmt_num(len(staging_df[staging_df["status"]=="dismissed"])))
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            display_cols = {
+                "bin_code":     "Bin Code",
+                "attempt_date": "Attempt Date",
+                "batch_no":     "Batch",
+                "machine_id":   "Machine",
+                "fail_reason":  "Fail Reason",
+                "fuzzy_match":  "Fuzzy Match",
+                "fuzzy_score":  "Match %",
+                "status":       "Status",
+                "staged_by":    "Uploaded By",
+                "staged_at":    "Staged At",
+                "resolution_note": "Resolution"
+            }
+            disp = filt[[c for c in display_cols if c in filt.columns]].rename(columns=display_cols)
+            st.dataframe(disp, use_container_width=True, hide_index=True, height=400)
+            recon_excel(disp, f"failed_produce_{date.today()}.xlsx")
+
+            # Bulk resolve / dismiss pending items
+            st.markdown("---")
+            st.markdown("**Update status of pending items**")
+            pending_df = staging_df[staging_df["status"] == "pending"]
+            if pending_df.empty:
+                st.info("No pending items to update.")
+            else:
+                sel_bins = st.multiselect(
+                    "Select bins to update",
+                    options=pending_df["bin_code"].tolist(),
+                    key="stg_select"
+                )
+                res_note = st.text_input("Resolution note", placeholder="e.g. Corrected to 10334 via bin correction tool")
+                c1, c2 = st.columns(2)
+                if sel_bins:
+                    if c1.button("✅ Mark as Resolved"):
+                        try:
+                            supabase.table("produce_staging")\
+                                .update({
+                                    "status": "resolved",
+                                    "resolved_at": datetime.now().isoformat(),
+                                    "resolved_by": user_email,
+                                    "resolution_note": res_note or "Marked resolved"
+                                })\
+                                .in_("bin_code", sel_bins)\
+                                .eq("status", "pending")\
+                                .execute()
+                            st.success(f"✅ {len(sel_bins)} item(s) marked resolved")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Update failed: {e}")
+
+                    if c2.button("🚫 Dismiss"):
+                        try:
+                            supabase.table("produce_staging")\
+                                .update({
+                                    "status": "dismissed",
+                                    "resolved_at": datetime.now().isoformat(),
+                                    "resolved_by": user_email,
+                                    "resolution_note": res_note or "Dismissed"
+                                })\
+                                .in_("bin_code", sel_bins)\
+                                .eq("status", "pending")\
+                                .execute()
+                            st.success(f"🚫 {len(sel_bins)} item(s) dismissed")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Update failed: {e}")
+
+    # ──────────────────────────────────────────────────────────
+    # TAB 4: BIN CODE CORRECTION
+    # ──────────────────────────────────────────────────────────
+    elif recon_tab == "🔧 Bin Code Correction":
         st.markdown("#### Correct a bin code typo")
         st.caption(
             "Use this when a bin code was recorded incorrectly at intake. "
-            "This updates **all** transaction records for that bin and logs the change. "
-            "Admin only — this action cannot be undone."
+            "Updates all transaction records and logs the change permanently. "
+            "Admin only."
         )
 
         if get_role() != "admin":
@@ -1830,76 +2123,84 @@ if menu == "Reconcile":
         c1, c2 = st.columns(2)
         old_code = c1.text_input("Wrong bin code (as recorded)", placeholder="e.g. 10334")
         new_code = c2.text_input("Correct bin code (actual)",    placeholder="e.g. 10234")
-        reason   = st.text_input("Reason / notes", placeholder="e.g. Confirmed with receiving supervisor — digit transposed")
+        reason   = st.text_input("Reason / notes",
+                                  placeholder="e.g. Confirmed with receiving supervisor — digit transposed")
 
         if old_code and new_code:
             if old_code == new_code:
                 st.warning("Old and new codes are the same.")
             else:
-                # Preview what will change
-                preview_res = (
-                    supabase.table("bin_transactions")
-                    .select("txid, transaction_type, transaction_date, pcn, supplier")
-                    .eq("bin_code", old_code)
-                    .execute()
-                )
+                preview_res = supabase.table("bin_transactions")\
+                    .select("txid, transaction_type, transaction_date, pcn, supplier")\
+                    .eq("bin_code", old_code).execute()
                 preview_df = pd.DataFrame(preview_res.data)
 
                 if preview_df.empty:
-                    st.error(f"No transactions found for bin code **{old_code}**. Check the code.")
+                    st.error(f"No transactions found for bin code **{old_code}**.")
                 else:
                     st.markdown(f"**Preview — {len(preview_df)} transaction(s) will be renamed:**")
                     st.dataframe(preview_df, use_container_width=True, hide_index=True)
 
                     st.markdown(
-                        f"<div style='background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.3);"
-                        f"border-radius:8px;padding:12px 16px;margin:12px 0;font-size:13px'>"
-                        f"⚠️ This will rename <b>{old_code}</b> → <b>{new_code}</b> across "
-                        f"<b>{len(preview_df)}</b> transaction row(s) and update bin_status. "
-                        f"This is permanent and logged.</div>",
+                        f"<div style='background:rgba(255,152,0,0.1);border:1px solid "
+                        f"rgba(255,152,0,0.3);border-radius:8px;padding:12px 16px;"
+                        f"margin:12px 0;font-size:13px'>⚠️ This will rename <b>{old_code}</b> → "
+                        f"<b>{new_code}</b> across <b>{len(preview_df)}</b> transaction row(s). "
+                        f"Permanent and logged.</div>",
                         unsafe_allow_html=True
                     )
 
-                    confirm_key = f"confirm_correction_{old_code}_{new_code}"
-                    confirmed = st.checkbox("I have verified this correction with physical records", key=confirm_key)
+                    confirmed = st.checkbox(
+                        "I have verified this correction with physical records",
+                        key=f"confirm_{old_code}_{new_code}"
+                    )
 
                     if confirmed:
-                        if st.button("🔧 Apply Correction", type="primary"):
+                        if st.button("🔧 Apply Correction"):
                             try:
                                 result = supabase.rpc("correct_bin_code", {
-                                    "p_old_code":      old_code,
-                                    "p_new_code":      new_code,
-                                    "p_corrected_by":  user_email,
-                                    "p_reason":        reason or None
+                                    "p_old_code":    old_code,
+                                    "p_new_code":    new_code,
+                                    "p_corrected_by": user_email,
+                                    "p_reason":       reason or None
                                 }).execute()
-                                rows_updated = result.data
                                 st.success(
-                                    f"✅ Correction applied — {rows_updated} transaction row(s) updated. "
-                                    f"Bin **{old_code}** is now **{new_code}** across the entire ledger."
+                                    f"✅ {result.data} transaction row(s) updated. "
+                                    f"**{old_code}** is now **{new_code}** across the ledger."
                                 )
+                                # Auto-resolve any staging entries for the old code
+                                try:
+                                    supabase.table("produce_staging")\
+                                        .update({
+                                            "status": "resolved",
+                                            "resolved_at": datetime.now().isoformat(),
+                                            "resolved_by": user_email,
+                                            "resolution_note": f"Bin corrected from {old_code} to {new_code}"
+                                        })\
+                                        .eq("bin_code", new_code)\
+                                        .eq("status", "pending")\
+                                        .execute()
+                                except Exception:
+                                    pass
                             except Exception as e:
                                 st.error(f"Correction failed: {e}")
 
     # ──────────────────────────────────────────────────────────
-    # TAB 3: CORRECTION HISTORY
+    # TAB 5: CORRECTION HISTORY
     # ──────────────────────────────────────────────────────────
-    elif recon_tab == "Correction History":
+    elif recon_tab == "📜 Correction History":
         st.markdown("#### All bin code corrections ever applied")
         st.caption("Full audit log — every correction is permanent and traceable.")
 
         try:
-            hist_res = (
-                supabase.table("bin_corrections")
-                .select("*")
-                .order("corrected_at", desc=True)
-                .range(0, 1000)
-                .execute()
-            )
+            hist_res = supabase.table("bin_corrections")\
+                .select("*").order("corrected_at", desc=True).range(0, 1000).execute()
             hist_df = pd.DataFrame(hist_res.data)
 
             if hist_df.empty:
                 st.info("No corrections have been applied yet.")
             else:
                 st.dataframe(hist_df, use_container_width=True, hide_index=True)
+                recon_excel(hist_df, f"correction_history_{date.today()}.xlsx")
         except Exception:
             st.info("Correction history table not found — run reconcile.sql in Supabase first.")
