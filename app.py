@@ -20,110 +20,272 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 # PAGE CONFIG
 # -----------------------------
 
-st.set_page_config(layout="wide", page_title="Keitt Bin Ledger System")
+st.set_page_config(
+    layout="wide",
+    page_title="Keitt Bin Ledger",
+    page_icon="🌿",
+    initial_sidebar_state="expanded"
+)
+
+# ================================================================
+# GLOBAL CSS
+# ================================================================
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
 }
 
-.keitt-navbar {
-    position: fixed;
-    top: 50px;
-    left: 0; right: 0;
-    height: 56px;
-    background: var(--background-color, #FFFFFF);
-    border-bottom: 2px solid rgba(128,128,128,0.15);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    z-index: 999;
-    display: flex;
-    align-items: center;
-    padding: 0 24px;
-    gap: 12px;
-}
-.keitt-navbar-logo {
-    width: 34px; height: 34px;
-    background: #1B5E20;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 17px; flex-shrink: 0;
-}
-.keitt-navbar-title {
-    font-size: 16px; font-weight: 700;
-    color: #2E7D32; letter-spacing: -0.2px;
-}
-.keitt-navbar-subtitle {
-    font-size: 11px; color: #888; line-height: 1; margin-top: 1px;
-}
-.keitt-navbar-sep { width: 1px; height: 26px; background: rgba(128,128,128,0.25); margin: 0 6px; }
-.keitt-navbar-tag {
-    font-size: 11px; color: #2E7D32;
-    background: rgba(46,125,50,0.1);
-    border-radius: 20px; padding: 3px 10px; font-weight: 500;
-}
+/* ── Hide default Streamlit chrome ── */
+#MainMenu { visibility: hidden; }
+footer    { visibility: hidden; }
 
+/* ── Main content padding ── */
 section.main > div.block-container {
-    padding-top: 124px !important;
-    padding-left: 2rem !important;
-    padding-right: 2rem !important;
-    max-width: 1400px;
+    padding-top: 2rem !important;
+    padding-left: 2.5rem !important;
+    padding-right: 2.5rem !important;
+    max-width: 1440px;
 }
 
+/* ══════════════════════════════════════
+   SIDEBAR
+══════════════════════════════════════ */
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebar"] > div > div {
+    background: #0F2417 !important;
+}
 [data-testid="stSidebar"] {
-    padding-top: 124px !important;
+    min-width: 230px !important;
+    max-width: 230px !important;
 }
-[data-testid="stSidebar"] .stRadio label {
-    font-size: 14px !important; padding: 4px 0 !important;
+[data-testid="stSidebar"] > div:first-child {
+    padding: 0 !important;
 }
-[data-testid="stSidebar"] .stRadio > div { gap: 10px !important; }
 
+/* ── Sidebar brand header ── */
+.sb-brand {
+    display: flex; align-items: center; gap: 11px;
+    padding: 22px 20px 18px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 8px;
+}
+.sb-brand-icon {
+    width: 36px; height: 36px; border-radius: 9px;
+    background: #2E7D32;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+.sb-brand-text { line-height: 1.2; }
+.sb-brand-title {
+    font-size: 14px; font-weight: 700;
+    color: #FFFFFF; letter-spacing: -0.1px;
+}
+.sb-brand-sub {
+    font-size: 10px; color: rgba(255,255,255,0.4);
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* ── Nav section label ── */
+.sb-section-label {
+    font-size: 9.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: rgba(255,255,255,0.3);
+    padding: 14px 20px 6px 20px;
+}
+
+/* ── Nav items (radio overrides) ── */
+[data-testid="stSidebar"] .stRadio > label { display: none !important; }
+[data-testid="stSidebar"] .stRadio > div {
+    gap: 1px !important;
+    padding: 0 10px !important;
+}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] { gap: 1px !important; }
+[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"] {
+    background: transparent !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    cursor: pointer !important;
+    transition: background 0.15s !important;
+}
+[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"]:hover {
+    background: rgba(255,255,255,0.07) !important;
+}
+[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"] > div:first-child {
+    display: none !important;
+}
+[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"] span {
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
+    color: rgba(255,255,255,0.65) !important;
+}
+[data-testid="stSidebar"] .stRadio label[aria-checked="true"][data-baseweb="radio"] {
+    background: rgba(46,125,50,0.35) !important;
+}
+[data-testid="stSidebar"] .stRadio label[aria-checked="true"][data-baseweb="radio"] span {
+    color: #81C784 !important;
+    font-weight: 600 !important;
+}
+
+/* ── Sidebar divider ── */
+.sb-divider {
+    border: none; border-top: 1px solid rgba(255,255,255,0.08);
+    margin: 10px 20px;
+}
+
+/* ── User card at bottom ── */
+.sb-user-card {
+    margin: 8px 10px;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+}
+.sb-user-name {
+    font-size: 12px; font-weight: 600; color: #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 170px;
+}
+.sb-user-email {
+    font-size: 10.5px; color: rgba(255,255,255,0.4);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 170px; margin-top: 1px;
+}
+.sb-role-badge {
+    display: inline-block; margin-top: 7px;
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; padding: 2px 8px; border-radius: 20px;
+}
+.sb-role-admin    { background: rgba(239,108,0,0.25);  color: #FFB74D; }
+.sb-role-operator { background: rgba(46,125,50,0.35);  color: #81C784; }
+.sb-role-viewer   { background: rgba(33,150,243,0.25); color: #64B5F6; }
+
+/* ── Sidebar logout button ── */
+[data-testid="stSidebar"] .stButton > button {
+    background: rgba(255,255,255,0.06) !important;
+    color: rgba(255,255,255,0.5) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    padding: 5px 14px !important;
+    width: 100%;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(255,80,80,0.18) !important;
+    color: #FF8A80 !important;
+    border-color: rgba(255,80,80,0.3) !important;
+}
+
+/* ══════════════════════════════════════
+   PAGE HEADER (per-page, not fixed)
+══════════════════════════════════════ */
+.page-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 0 20px 0;
+    border-bottom: 1px solid rgba(128,128,128,0.15);
+    margin-bottom: 28px;
+}
+.page-header-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(46,125,50,0.12);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+}
+.page-header-title {
+    font-size: 20px; font-weight: 700;
+    color: inherit; letter-spacing: -0.3px; line-height: 1.1;
+}
+.page-header-sub {
+    font-size: 12px; color: #888; margin-top: 2px;
+}
+
+/* ══════════════════════════════════════
+   METRIC CARDS
+══════════════════════════════════════ */
 .metric-card {
     background: rgba(128,128,128,0.06);
-    border: 1px solid rgba(128,128,128,0.18);
-    border-radius: 12px; padding: 18px 14px; text-align: center;
+    border: 1px solid rgba(128,128,128,0.15);
+    border-radius: 12px; padding: 18px 16px; text-align: center;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.metric-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
-.metric-value { font-size: 24px; font-weight: 700; color: #2E7D32; line-height: 1.1; }
-.metric-sub   { font-size: 11px; color: #888; margin-top: 5px; }
+.metric-label {
+    font-size: 10.5px; color: #888;
+    text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 6px;
+}
+.metric-value {
+    font-size: 24px; font-weight: 700; color: #2E7D32; line-height: 1.1;
+}
+.metric-sub { font-size: 11px; color: #888; margin-top: 5px; }
 
+/* ══════════════════════════════════════
+   SECTION HEADER
+══════════════════════════════════════ */
 .section-header {
-    font-size: 13px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.7px;
-    border-bottom: 2px solid rgba(46,125,50,0.25);
+    font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    border-bottom: 2px solid rgba(46,125,50,0.2);
     padding-bottom: 8px; margin: 32px 0 16px 0;
     color: #2E7D32;
 }
 
-.stButton > button {
+/* ══════════════════════════════════════
+   BUTTONS (main content area)
+══════════════════════════════════════ */
+section.main .stButton > button {
     background-color: #1B5E20 !important; color: white !important;
     border: none !important; border-radius: 8px !important;
-    font-weight: 600 !important; padding: 8px 20px !important;
+    font-weight: 600 !important; padding: 8px 22px !important;
+    font-size: 13px !important;
 }
-.stButton > button:hover { background-color: #2E7D32 !important; }
-</style>
+section.main .stButton > button:hover {
+    background-color: #2E7D32 !important;
+}
 
-<div class="keitt-navbar">
-    <div class="keitt-navbar-logo">🌿</div>
-    <div>
-        <div class="keitt-navbar-title">Keitt Bin Ledger</div>
-        <div class="keitt-navbar-subtitle">Warehouse Inventory &amp; Production Flow</div>
-    </div>
-    <div class="keitt-navbar-sep"></div>
-    <div class="keitt-navbar-tag">📦 Inventory</div>
-    <div class="keitt-navbar-tag">🔁 Traceability</div>
-    <div class="keitt-navbar-tag">🏭 Production</div>
-</div>
+/* ══════════════════════════════════════
+   LOGIN PAGE
+══════════════════════════════════════ */
+.login-card {
+    background: rgba(128,128,128,0.05);
+    border: 1px solid rgba(128,128,128,0.15);
+    border-radius: 16px;
+    padding: 40px 36px 32px 36px;
+    margin-top: 20px;
+}
+.login-logo {
+    width: 52px; height: 52px; border-radius: 14px;
+    background: #1B5E20;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; margin: 0 auto 16px auto;
+}
+.login-title {
+    font-size: 22px; font-weight: 700;
+    text-align: center; letter-spacing: -0.3px; margin-bottom: 4px;
+}
+.login-sub {
+    font-size: 13px; color: #888;
+    text-align: center; margin-bottom: 28px;
+}
+.access-denied {
+    background: rgba(211,47,47,0.08);
+    border: 1px solid rgba(211,47,47,0.25);
+    border-radius: 10px; padding: 16px 20px;
+    color: #EF9A9A; font-size: 13px; text-align: center;
+    margin-top: 16px;
+}
+</style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------
+# ================================================================
 # SESSION STATE
-# ---------------------------------------------------------------
+# ================================================================
 
-for key in ("user", "access_token", "refresh_token"):
+for key in ("user", "access_token", "refresh_token", "role"):
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -135,63 +297,170 @@ if st.session_state["user"] is None and st.session_state["access_token"]:
         )
         if restored.user:
             st.session_state["user"] = restored.user
+            meta = restored.user.user_metadata or {}
+            st.session_state["role"] = meta.get("role", "viewer")
     except Exception:
         st.session_state["access_token"]  = None
         st.session_state["refresh_token"] = None
 
-# ---------------------------------------------------------------
-# AUTH
-# ---------------------------------------------------------------
+# ================================================================
+# ROLE HELPERS
+# ================================================================
+
+ROLE_LABELS = {"admin": "Admin", "operator": "Operator", "viewer": "Viewer"}
+
+def get_role() -> str:
+    return st.session_state.get("role") or "viewer"
+
+def can_write() -> bool:
+    """Operators and admins can insert/modify data."""
+    return get_role() in ("admin", "operator")
+
+def require_write():
+    """Call at top of any write page. Stops rendering if viewer."""
+    if not can_write():
+        st.markdown("""
+        <div class='access-denied'>
+            🔒 <b>Access Denied</b><br>
+            Your account has read-only (Viewer) access.<br>
+            Contact your admin to request Operator access.
+        </div>""", unsafe_allow_html=True)
+        st.stop()
+
+# ================================================================
+# LOGIN SCREEN
+# ================================================================
 
 def login_screen():
-    _, col, _ = st.columns([1, 1.1, 1])
+    st.markdown("<br>", unsafe_allow_html=True)
+    _, col, _ = st.columns([1, 1, 1])
     with col:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("### 🌿 Keitt Bin Ledger")
-        st.markdown("Sign in to continue")
-        email    = st.text_input("Email",    placeholder="you@example.com")
-        password = st.text_input("Password", type="password", placeholder="••••••••")
+        st.markdown("""
+        <div class='login-card'>
+            <div class='login-logo'>🌿</div>
+            <div class='login-title'>Keitt Bin Ledger</div>
+            <div class='login-sub'>Sign in to your account</div>
+        </div>""", unsafe_allow_html=True)
+
+        # Render inputs outside the HTML card (Streamlit can't render widgets inside HTML)
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        email    = st.text_input("Email",    placeholder="you@example.com",  label_visibility="collapsed")
+        password = st.text_input("Password", placeholder="Password", type="password", label_visibility="collapsed")
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
         if st.button("Sign In", use_container_width=True):
             try:
                 result = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 if result.user:
+                    meta = result.user.user_metadata or {}
                     st.session_state["user"]          = result.user
                     st.session_state["access_token"]  = result.session.access_token
                     st.session_state["refresh_token"] = result.session.refresh_token
+                    st.session_state["role"]          = meta.get("role", "viewer")
                     st.rerun()
             except Exception:
-                st.error("Invalid email or password")
+                st.error("Invalid email or password. Please try again.")
+
+        st.markdown(
+            "<div style='text-align:center;margin-top:16px;font-size:11px;color:#888'>"
+            "Contact your admin if you need access</div>",
+            unsafe_allow_html=True
+        )
 
 if st.session_state["user"] is None:
     login_screen()
     st.stop()
 
-# ---------------------------------------------------------------
+# ================================================================
 # SIDEBAR
-# ---------------------------------------------------------------
+# ================================================================
 
-st.sidebar.markdown("**Menu**")
-menu = st.sidebar.radio(
-    "", [
-        "Dashboard",
-        "Receive", "Produce", "Adjust",
-        "Reports",
-        "Bin History Lookup", "PCN Lookup"
-    ],
-    label_visibility="collapsed"
-)
-st.sidebar.markdown("---")
-st.sidebar.markdown(
-    f"<small style='color:#999'>Signed in as<br><b>{st.session_state['user'].email}</b></small>",
-    unsafe_allow_html=True
-)
-st.sidebar.markdown("")
-if st.sidebar.button("Logout"):
+role      = get_role()
+user_email = st.session_state["user"].email
+# Derive a display name from the email (part before @)
+display_name = user_email.split("@")[0].replace(".", " ").replace("_", " ").title()
+
+# Brand header
+st.sidebar.markdown(f"""
+<div class='sb-brand'>
+    <div class='sb-brand-icon'>🌿</div>
+    <div class='sb-brand-text'>
+        <div class='sb-brand-title'>Keitt Bin Ledger</div>
+        <div class='sb-brand-sub'>Warehouse System</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Nav — operators/admins see write pages; viewers only see read pages
+st.sidebar.markdown("<div class='sb-section-label'>Navigation</div>", unsafe_allow_html=True)
+
+if can_write():
+    all_pages = [
+        "📊  Dashboard",
+        "📥  Receive",
+        "🏭  Produce",
+        "⚖️  Adjust",
+        "📈  Reports",
+        "🔍  Bin Lookup",
+        "📋  PCN Lookup",
+        "🔧  Reconcile",
+    ]
+else:
+    all_pages = [
+        "📊  Dashboard",
+        "📈  Reports",
+        "🔍  Bin Lookup",
+        "📋  PCN Lookup",
+    ]
+
+page_selected = st.sidebar.radio("nav", all_pages, label_visibility="collapsed")
+# Strip icon prefix to get clean menu key
+menu = page_selected.split("  ", 1)[-1].strip()
+# Remap display names back to original keys used in page routing
+_menu_map = {
+    "Dashboard":  "Dashboard",
+    "Receive":    "Receive",
+    "Produce":    "Produce",
+    "Adjust":     "Adjust",
+    "Reports":    "Reports",
+    "Bin Lookup": "Bin History Lookup",
+    "PCN Lookup": "PCN Lookup",
+    "Reconcile":  "Reconcile",
+}
+menu = _menu_map.get(menu, menu)
+
+# User card + logout
+st.sidebar.markdown("<hr class='sb-divider'>", unsafe_allow_html=True)
+role_css = f"sb-role-{role}"
+st.sidebar.markdown(f"""
+<div class='sb-user-card'>
+    <div class='sb-user-name'>{display_name}</div>
+    <div class='sb-user-email'>{user_email}</div>
+    <span class='sb-role-badge {role_css}'>{ROLE_LABELS.get(role, role)}</span>
+</div>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+if st.sidebar.button("Sign Out"):
     supabase.auth.sign_out()
-    st.session_state["user"]          = None
-    st.session_state["access_token"]  = None
-    st.session_state["refresh_token"] = None
+    for k in ("user", "access_token", "refresh_token", "role"):
+        st.session_state[k] = None
     st.rerun()
+
+# ================================================================
+# PAGE HEADER HELPER
+# ================================================================
+
+def page_header(icon: str, title: str, subtitle: str = ""):
+    sub_html = f"<div class='page-header-sub'>{subtitle}</div>" if subtitle else ""
+    st.markdown(f"""
+    <div class='page-header'>
+        <div class='page-header-icon'>{icon}</div>
+        <div>
+            <div class='page-header-title'>{title}</div>
+            {sub_html}
+        </div>
+    </div>""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------
 # UTILS
@@ -246,7 +515,15 @@ def show_errors(errors: list, failed_bins: list):
 
 def std_columns(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [c.strip().replace(" ", "_").replace("/", "_") for c in df.columns]
-    df["BIN"] = df["BIN"].astype(str).str.strip()
+    # Convert BIN to string cleanly — if Excel stores bins as numbers (e.g. 1234),
+    # astype(str) produces "1234.0". We strip the .0 to match DB values.
+    def clean_bin(val):
+        if pd.isna(val): return ""
+        s = str(val).strip()
+        if s.endswith(".0"):
+            s = s[:-2]
+        return s
+    df["BIN"] = df["BIN"].apply(clean_bin)
     return df
 
 def metric_card(label, value, sub=None):
@@ -265,6 +542,53 @@ def fmt_num(n, decimals=0):
     except:
         return "—"
 
+# ================================================================
+# FUZZY MATCH UTILITIES
+# ================================================================
+
+def edit_distance(a: str, b: str) -> int:
+    """Levenshtein edit distance between two strings."""
+    a, b = str(a), str(b)
+    if a == b: return 0
+    if not a: return len(b)
+    if not b: return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        curr = [i + 1]
+        for j, cb in enumerate(b):
+            curr.append(min(
+                prev[j + 1] + 1,   # delete
+                curr[j]    + 1,    # insert
+                prev[j] + (0 if ca == cb else 1)  # replace
+            ))
+        prev = curr
+    return prev[len(b)]
+
+def similarity_pct(a: str, b: str) -> float:
+    """Similarity as a percentage (100 = identical)."""
+    dist = edit_distance(str(a), str(b))
+    max_len = max(len(str(a)), len(str(b)), 1)
+    return round((1 - dist / max_len) * 100, 1)
+
+def fuzzy_candidates(
+    bin_code: str,
+    stock_bins: list,       # list of dicts with bin_code + metadata
+    top_n: int = 3,
+    min_similarity: float = 60.0
+) -> list:
+    """
+    For a given bin_code that failed validation, find the closest
+    matches among bins currently in RECEIVED state.
+    Returns up to top_n candidates sorted by similarity descending.
+    """
+    scored = []
+    for s in stock_bins:
+        sim = similarity_pct(bin_code, s["bin_code"])
+        if sim >= min_similarity:
+            scored.append({**s, "similarity": sim})
+    scored.sort(key=lambda x: x["similarity"], reverse=True)
+    return scored[:top_n]
+
 PLOTLY_BASE = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
@@ -280,6 +604,7 @@ GREEN_SEQ = ["#1B5E20","#2E7D32","#388E3C","#43A047","#66BB6A","#A5D6A7","#C8E6C
 # ================================================================
 
 if menu == "Dashboard":
+    page_header("📊", "Dashboard", "Live stock summary and operational overview")
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("**Filters**")
@@ -584,18 +909,102 @@ if menu == "Dashboard":
 # ================================================================
 
 if menu == "Receive":
-    st.markdown("<div class='section-header'>Receive Bins</div>", unsafe_allow_html=True)
+    page_header("📥", "Receive Bins", "Upload and register incoming bin deliveries")
+    require_write()
+
+    # ── Import mode toggle ────────────────────────────────────
+    import_mode = st.radio(
+        "Import mode",
+        ["Normal — daily receives", "Opening Stock — historical bulk import"],
+        horizontal=True,
+        help=(
+            "Opening Stock mode handles bins that appear more than once "
+            "in the file (same bin, different delivery dates). "
+            "It keeps the latest row per bin and closes prior cycles automatically."
+        )
+    )
+    is_opening_stock = import_mode.startswith("Opening Stock")
+
     file = st.file_uploader("Upload Receive Excel", type="xlsx")
 
     if file:
-        df = std_columns(pd.read_excel(file))
+        try:
+            df = std_columns(pd.read_excel(file))
+        except Exception as e:
+            st.error(f"Could not read Excel file: {e}")
+            st.stop()
 
-        # ── Validation preview ────────────────────────────────
-        bins   = df["BIN"].unique().tolist()
-        states = get_bin_states(bins)
+        with st.expander("📋 Detected columns in your file"):
+            st.write(list(df.columns))
 
-        dupes_in_file   = df[df.duplicated(subset=["BIN"], keep=False)]["BIN"].unique().tolist()
-        already_rcv     = [b for b in bins if states.get(b, {}).get("state") == "RECEIVED"]
+        if "BIN" not in df.columns:
+            st.error(
+                f"No BIN column found. Your file has: {list(df.columns)}\n\n"
+                "The column must be named exactly **BIN**."
+            )
+            st.stop()
+
+        # Ensure DATE column is parseable
+        if "DATE" in df.columns:
+            df["_date_parsed"] = pd.to_datetime(df["DATE"], errors="coerce")
+        else:
+            df["_date_parsed"] = pd.NaT
+
+        st.caption(f"{len(df)} rows detected")
+
+        # ── Dedup logic ───────────────────────────────────────
+        # Identify bins appearing more than once in the file
+        dup_mask      = df.duplicated(subset=["BIN"], keep=False)
+        dupes_in_file = df[dup_mask]["BIN"].unique().tolist()
+
+        if is_opening_stock and dupes_in_file:
+            # For opening stock: keep only the LATEST row per duplicate bin
+            # Sort by date desc, then keep first occurrence per BIN
+            df_sorted   = df.sort_values("_date_parsed", ascending=False, na_position="last")
+            df_deduped  = df_sorted.drop_duplicates(subset=["BIN"], keep="first")
+            dropped_rows = df[dup_mask & ~df.index.isin(df_deduped.index)]
+
+            st.markdown(
+                f"<div style='background:rgba(46,125,50,0.08);border:1px solid rgba(46,125,50,0.25);"
+                f"border-radius:8px;padding:12px 16px;margin:8px 0;font-size:13px'>"
+                f"📦 <b>Opening Stock mode</b> — {len(dupes_in_file)} bin(s) appear more than once. "
+                f"Keeping the <b>latest date</b> row for each. "
+                f"{len(dropped_rows)} earlier row(s) will be skipped.</div>",
+                unsafe_allow_html=True
+            )
+
+            if not dropped_rows.empty:
+                with st.expander(f"View {len(dropped_rows)} skipped earlier rows"):
+                    skip_cols = [c for c in ["BIN","DATE","PCN","SUPPLIER","VARIETY","WEIGHT"] if c in dropped_rows.columns]
+                    st.dataframe(dropped_rows[skip_cols], use_container_width=True, hide_index=True)
+
+            # Work with deduped dataframe from here
+            df = df_deduped.reset_index(drop=True)
+            dupes_in_file = []   # cleared — already resolved
+
+        elif dupes_in_file and not is_opening_stock:
+            # Normal mode — duplicates are flagged and blocked as before
+            pass  # handled in preview below
+
+        # ── DB state check ────────────────────────────────────
+        bins = df["BIN"].unique().tolist()
+        try:
+            states = get_bin_states(bins)
+        except Exception as e:
+            st.error(f"Could not fetch bin states from database: {e}")
+            st.stop()
+
+        already_rcv = [b for b in bins if states.get(b, {}).get("state") == "RECEIVED"]
+
+        # In opening stock mode: bins already in RECEIVED state need a prior
+        # cycle closed first (ADJUST_OUT) before the new receive can go in.
+        # We handle this automatically.
+        needs_close   = []
+        if is_opening_stock and already_rcv:
+            needs_close = already_rcv[:]
+            already_rcv = []   # will be handled, not blocked
+
+        # Amount mismatch check
         amount_mismatch = []
         if all(c in df.columns for c in ["WEIGHT","RATE","AMOUNT"]):
             df["_expected"] = pd.to_numeric(df["WEIGHT"], errors="coerce") * pd.to_numeric(df["RATE"], errors="coerce")
@@ -608,18 +1017,25 @@ if menu == "Receive":
                         and b not in already_rcv
                         and b not in amount_mismatch]
 
+        # ── Preview metrics ───────────────────────────────────
         st.markdown("**Upload Preview**")
         p1, p2, p3, p4, p5 = st.columns(5)
-        with p1: metric_card("Total Rows",        fmt_num(len(df)))
-        with p2: metric_card("Will Process",      fmt_num(len(will_process)),  "✅ Ready")
-        with p3: metric_card("Dupes in File",     fmt_num(len(dupes_in_file)), "⚠️ Skipped")
-        with p4: metric_card("Already Received",  fmt_num(len(already_rcv)),   "⚠️ Skipped")
-        with p5: metric_card("Amount Mismatch",   fmt_num(len(amount_mismatch)),"❌ Skipped")
+        with p1: metric_card("Total Rows",       fmt_num(len(df)))
+        with p2: metric_card("Will Process",     fmt_num(len(will_process)),   "✅ Ready")
+        with p3: metric_card("Dupes in File",    fmt_num(len(dupes_in_file)),  "⚠️ Skipped" if not is_opening_stock else "✅ Resolved")
+        with p4: metric_card("Already Received", fmt_num(len(already_rcv)),    "⚠️ Skipped")
+        with p5: metric_card("Amount Mismatch",  fmt_num(len(amount_mismatch)),"❌ Skipped")
+
+        if needs_close:
+            st.info(
+                f"ℹ️ {len(needs_close)} bin(s) are currently in RECEIVED state and will have their "
+                f"prior cycle closed automatically (ADJUST_OUT) before the new receive is inserted."
+            )
 
         if dupes_in_file or already_rcv or amount_mismatch:
             with st.expander("View issue details"):
                 issue_rows = []
-                for b in dupes_in_file:   issue_rows.append({"bin_code": b, "issue": "Duplicate in file"})
+                for b in dupes_in_file:   issue_rows.append({"bin_code": b, "issue": "Duplicate in file — use Opening Stock mode to resolve"})
                 for b in already_rcv:     issue_rows.append({"bin_code": b, "issue": "Already in RECEIVED state"})
                 for b in amount_mismatch: issue_rows.append({"bin_code": b, "issue": "Amount ≠ Weight × Rate"})
                 st.dataframe(pd.DataFrame(issue_rows), use_container_width=True, hide_index=True)
@@ -629,15 +1045,37 @@ if menu == "Receive":
         else:
             st.dataframe(df[df["BIN"].isin(will_process)].head(5),
                          use_container_width=True, hide_index=True)
-            st.caption(f"Showing first 5 of {len(will_process)} bins that will be inserted")
+            st.caption(f"Showing first 5 of {len(will_process)} bins that will be inserted"
+                       + (f" ({len(needs_close)} will have prior cycle auto-closed)" if needs_close else ""))
 
             if st.button(f"✅ Confirm & Process {len(will_process)} Bins"):
-                rows, errors, seen = [], [], set()
+                rows, close_rows, errors, seen = [], [], [], set()
+
                 for row in df.itertuples(index=False):
                     bin_code = row.BIN
                     if bin_code not in will_process: continue
                     if bin_code in seen: continue
                     seen.add(bin_code)
+
+                    # If this bin needs its prior cycle closed first, insert ADJUST_OUT
+                    if bin_code in needs_close:
+                        s = states.get(bin_code, {})
+                        close_rows.append({
+                            "txid":             str(uuid.uuid4()),
+                            "transaction_type": "ADJUST_OUT",
+                            "bin_code":         bin_code,
+                            "transaction_date": parse_date(row.DATE),
+                            "linked_txid":      s.get("last_txid"),
+                            "pcn":     s.get("pcn"),
+                            "supplier":s.get("supplier"),
+                            "source":  s.get("source"),
+                            "variety": s.get("variety"),
+                            "weight":  s.get("weight"),
+                            "rate":    s.get("rate"),
+                            "amount":  s.get("amount"),
+                            "created_at": datetime.now().isoformat(),
+                        })
+
                     rows.append({
                         "txid":             str(uuid.uuid4()),
                         "transaction_type": "RECEIVE",
@@ -655,9 +1093,19 @@ if menu == "Receive":
                         "amount":  clean(getattr(row, "AMOUNT",   None)),
                         "created_at": datetime.now().isoformat(),
                     })
-                failed = bulk_insert(rows, "Receive")
-                st.success(f"✅ {len(rows) - len(failed)} bins received successfully")
-                show_errors(errors, failed)
+
+                try:
+                    # Insert ADJUST_OUTs first to close prior cycles
+                    if close_rows:
+                        bulk_insert(close_rows, "AdjustClose")
+                    failed = bulk_insert(rows, "Receive")
+                    st.success(
+                        f"✅ {len(rows) - len(failed)} bins received successfully"
+                        + (f" — {len(close_rows)} prior cycle(s) auto-closed" if close_rows else "")
+                    )
+                    show_errors(errors, failed)
+                except Exception as e:
+                    st.error(f"Insert failed: {e}")
 
 
 # ================================================================
@@ -665,13 +1113,17 @@ if menu == "Receive":
 # ================================================================
 
 if menu == "Produce":
-    st.markdown("<div class='section-header'>Produce Bins</div>", unsafe_allow_html=True)
+    page_header("🏭", "Produce Bins", "Record bins sent through production")
+    require_write()
     file = st.file_uploader("Upload Production Excel", type="xlsx")
 
     if file:
         df = std_columns(pd.read_excel(file))
 
-        # ── Validation preview ────────────────────────────────
+        if "BIN" not in df.columns:
+            st.error(f"No BIN column found. Detected: {list(df.columns)}")
+            st.stop()
+
         bins   = df["BIN"].unique().tolist()
         states = get_bin_states(bins)
 
@@ -679,41 +1131,116 @@ if menu == "Produce":
         not_received  = [b for b in bins if not states.get(b) or states[b]["state"] != "RECEIVED"]
         will_process  = [b for b in bins if b not in dupes_in_file and b not in not_received]
 
+        # ── Metrics ───────────────────────────────────────────
         st.markdown("**Upload Preview**")
         p1, p2, p3, p4 = st.columns(4)
-        with p1: metric_card("Total Rows",      fmt_num(len(df)))
-        with p2: metric_card("Will Process",    fmt_num(len(will_process)), "✅ Ready")
-        with p3: metric_card("Dupes in File",   fmt_num(len(dupes_in_file)), "⚠️ Skipped")
-        with p4: metric_card("Not in Stock",    fmt_num(len(not_received)), "⚠️ Skipped")
+        with p1: metric_card("Total Rows",    fmt_num(len(df)))
+        with p2: metric_card("Will Process",  fmt_num(len(will_process)),  "✅ Ready")
+        with p3: metric_card("Dupes in File", fmt_num(len(dupes_in_file)), "⚠️ Skipped")
+        with p4: metric_card("Not in Stock",  fmt_num(len(not_received)),  "⚠️ Review")
 
-        if dupes_in_file or not_received:
-            with st.expander("View issue details"):
-                issue_rows = []
-                for b in dupes_in_file: issue_rows.append({"bin_code": b, "issue": "Duplicate in file"})
-                for b in not_received:
-                    state = states.get(b, {}).get("state", "Never received")
-                    issue_rows.append({"bin_code": b, "issue": f"Not in RECEIVED state ({state})"})
-                st.dataframe(pd.DataFrame(issue_rows), use_container_width=True, hide_index=True)
+        # ── Fuzzy match for failed bins ───────────────────────
+        if not_received:
+            st.markdown("---")
+            st.markdown("#### ⚠️ Bins Not Found — Possible Typo Matches")
+            st.caption(
+                "These bins were not found in RECEIVED state. "
+                "The system searched for similar bin codes currently in stock. "
+                "If you recognise a match, tick it — the system will produce "
+                "using the correct bin code."
+            )
 
-        if len(will_process) == 0:
-            st.error("Nothing to process — all bins have issues.")
+            # Fetch all current stock for fuzzy search (bin_code + metadata)
+            stock_df = fetch_all("v_current_stock")
+            stock_list = stock_df[["bin_code","pcn","supplier","variety","days_in_stock"]]\
+                         .to_dict("records") if not stock_df.empty else []
+
+            # Session state to hold operator approvals
+            if "fuzzy_approvals" not in st.session_state:
+                st.session_state["fuzzy_approvals"] = {}
+
+            any_candidates = False
+            for failed_bin in not_received:
+                if states.get(failed_bin, {}).get("state") not in (None, "PRODUCED", "CONSUMED", "EMPTY"):
+                    # Already in a non-receivable state — not a typo scenario
+                    continue
+
+                candidates = fuzzy_candidates(failed_bin, stock_list)
+                if not candidates:
+                    st.markdown(
+                        f"**{failed_bin}** — no similar bins found in stock "
+                        f"*(may be a genuine intake error — check Reconcile page)*"
+                    )
+                    continue
+
+                any_candidates = True
+                st.markdown(f"**{failed_bin}** — not found. Closest matches in stock:")
+
+                for i, c in enumerate(candidates):
+                    col1, col2, col3, col4, col5, col6 = st.columns([1.5, 1.2, 1.5, 1.5, 1, 1.2])
+                    col1.markdown(f"**{c['bin_code']}**")
+                    col2.markdown(f"PCN: `{c.get('pcn','—')}`")
+                    col3.markdown(f"Supplier: {c.get('supplier','—')}")
+                    col4.markdown(f"Variety: {c.get('variety','—')}")
+                    col5.markdown(f"{c['similarity']}% match")
+
+                    key = f"approve_{failed_bin}_{c['bin_code']}"
+                    approved = col6.checkbox("Use this", key=key)
+                    if approved:
+                        # Only allow one approval per failed bin
+                        st.session_state["fuzzy_approvals"][failed_bin] = c["bin_code"]
+                    elif st.session_state["fuzzy_approvals"].get(failed_bin) == c["bin_code"]:
+                        del st.session_state["fuzzy_approvals"][failed_bin]
+
+            # Show summary of approved overrides
+            approvals = st.session_state.get("fuzzy_approvals", {})
+            if approvals:
+                st.markdown("**Approved substitutions:**")
+                for wrong, correct in approvals.items():
+                    st.markdown(
+                        f"- `{wrong}` → `{correct}` "
+                        f"*(will produce {correct} and mark {wrong} as the typed value)*"
+                    )
+
+        # ── Confirm button ────────────────────────────────────
+        approvals  = st.session_state.get("fuzzy_approvals", {})
+        total_producible = len(will_process) + len(approvals)
+
+        if total_producible == 0:
+            st.error("Nothing to process.")
         else:
-            st.dataframe(df[df["BIN"].isin(will_process)].head(5),
-                         use_container_width=True, hide_index=True)
-            st.caption(f"Showing first 5 of {len(will_process)} bins that will be inserted")
+            st.markdown("---")
+            if will_process:
+                st.dataframe(df[df["BIN"].isin(will_process)].head(5),
+                             use_container_width=True, hide_index=True)
+                st.caption(f"First 5 of {len(will_process)} exact matches + "
+                           f"{len(approvals)} approved substitution(s)")
 
-            if st.button(f"✅ Confirm & Process {len(will_process)} Bins"):
+            if st.button(f"✅ Confirm & Process {total_producible} Bins"):
                 rows, errors, seen = [], [], set()
+
+                # Build a combined mapping: file_bin → db_bin
+                # For exact matches, file_bin == db_bin
+                # For fuzzy approvals, file_bin → corrected db_bin
+                bin_mapping = {b: b for b in will_process}
+                bin_mapping.update(approvals)  # overrides for typo-matched bins
+
                 for row in df.itertuples(index=False):
-                    bin_code = row.BIN
-                    if bin_code not in will_process: continue
-                    if bin_code in seen: continue
-                    seen.add(bin_code)
-                    s = states[bin_code]
+                    file_bin = row.BIN
+                    if file_bin not in bin_mapping: continue
+                    db_bin = bin_mapping[file_bin]
+                    if db_bin in seen: continue
+                    seen.add(db_bin)
+
+                    s = states.get(db_bin) or get_bin_states([db_bin]).get(db_bin)
+                    if not s:
+                        errors.append((file_bin, f"Could not fetch state for {db_bin}"))
+                        continue
+
                     rows.append({
                         "txid":             str(uuid.uuid4()),
                         "transaction_type": "PRODUCE",
-                        "bin_code":         bin_code,
+                        "bin_code":         db_bin,   # always use the correct DB bin code
                         "transaction_date": parse_date(row.DATE),
                         "batch_no":         clean(getattr(row, "BATCHNO",   None)),
                         "machine_id":       clean(getattr(row, "MACHINEID", None)),
@@ -727,9 +1254,20 @@ if menu == "Produce":
                         "amount":  s.get("amount"),
                         "created_at": datetime.now().isoformat(),
                     })
-                failed = bulk_insert(rows, "Produce")
-                st.success(f"✅ {len(rows) - len(failed)} bins produced")
-                show_errors(errors, failed)
+
+                try:
+                    failed = bulk_insert(rows, "Produce")
+                    st.success(f"✅ {len(rows) - len(failed)} bins produced successfully")
+                    if approvals:
+                        st.info(
+                            f"ℹ️ {len(approvals)} bin(s) produced via fuzzy match substitution. "
+                            f"Consider updating the original receive records via the Reconcile page."
+                        )
+                    show_errors(errors, failed)
+                    # Clear approvals after successful process
+                    st.session_state["fuzzy_approvals"] = {}
+                except Exception as e:
+                    st.error(f"Insert failed: {e}")
 
 
 # ================================================================
@@ -737,7 +1275,8 @@ if menu == "Produce":
 # ================================================================
 
 if menu == "Adjust":
-    st.markdown("<div class='section-header'>Adjust Stock</div>", unsafe_allow_html=True)
+    page_header("⚖️", "Adjust Stock", "Remove bins from stock via adjustment")
+    require_write()
     file = st.file_uploader("Upload Adjustment Excel", type="xlsx")
 
     if file:
@@ -806,7 +1345,7 @@ if menu == "Adjust":
 # ================================================================
 
 if menu == "Bin History Lookup":
-    st.markdown("<div class='section-header'>Bin History Lookup</div>", unsafe_allow_html=True)
+    page_header("🔍", "Bin History Lookup", "Full transaction history for a single bin")
     bin_lookup = st.text_input("Enter Bin Code")
 
     if bin_lookup:
@@ -846,7 +1385,7 @@ if menu == "Bin History Lookup":
 # ================================================================
 
 if menu == "PCN Lookup":
-    st.markdown("<div class='section-header'>PCN Lookup</div>", unsafe_allow_html=True)
+    page_header("📋", "PCN Lookup", "All bins and utilisation for a specific PCN")
     pcn_lookup = st.text_input("Enter PCN")
 
     if pcn_lookup:
@@ -891,7 +1430,7 @@ if menu == "PCN Lookup":
 # ================================================================
 
 if menu == "Reports":
-    st.markdown("<div class='section-header'>Reports</div>", unsafe_allow_html=True)
+    page_header("📈", "Reports", "PCN closure, weekly & monthly summaries, bulk bin lookup")
 
     report_tab = st.radio(
         "", ["PCN Closure", "Weekly Summary", "Monthly Summary", "Bulk Bin Lookup"],
@@ -1175,3 +1714,192 @@ if menu == "Reports":
                         )
                         excel_download(hist_df, f"bulk_bin_history_{date.today()}.xlsx",
                                        "⬇️ Export Full History")
+
+
+# ================================================================
+# RECONCILE
+# ================================================================
+
+if menu == "Reconcile":
+    page_header("🔧", "Reconcile", "Investigate unmatched bins and correct bin code typos")
+
+    if get_role() not in ("admin", "operator"):
+        st.error("Access denied.")
+        st.stop()
+
+    recon_tab = st.radio(
+        "", ["Unmatched Bin Report", "Bin Code Correction", "Correction History"],
+        horizontal=True, label_visibility="collapsed"
+    )
+
+    # ──────────────────────────────────────────────────────────
+    # TAB 1: UNMATCHED BIN REPORT
+    # ──────────────────────────────────────────────────────────
+    if recon_tab == "Unmatched Bin Report":
+        st.markdown("#### Bins in stock beyond 14 days with no production")
+        st.caption(
+            "These bins should have gone to production by now but haven't. "
+            "Likely causes: intake typo (wrong bin code recorded at receive) or "
+            "production typo (bin was produced under a different code)."
+        )
+
+        unmatched = fetch_all("v_unmatched_bins")
+
+        if unmatched.empty:
+            st.success("✅ No unmatched bins — all bins older than 14 days have been produced.")
+        else:
+            unmatched["days_in_stock"] = pd.to_numeric(unmatched["days_in_stock"], errors="coerce")
+            unmatched["weight"]        = pd.to_numeric(unmatched["weight"],        errors="coerce")
+
+            # Filters
+            f1, f2, f3 = st.columns(3)
+            min_days    = f1.number_input("Min days in stock", value=14, min_value=1, step=1)
+            sup_filter  = f2.text_input("Supplier", key="um_sup")
+            pcn_filter  = f3.text_input("PCN",      key="um_pcn")
+
+            filt = unmatched[unmatched["days_in_stock"] >= min_days]
+            if sup_filter:
+                filt = filt[filt["supplier"].str.contains(sup_filter, case=False, na=False)]
+            if pcn_filter:
+                filt = filt[filt["pcn"].str.contains(pcn_filter, case=False, na=False)]
+
+            u1, u2, u3 = st.columns(3)
+            with u1: metric_card("Unmatched Bins",   fmt_num(len(filt)))
+            with u2: metric_card("Total Weight",     fmt_num(filt["weight"].sum(), 1) + " kg")
+            with u3: metric_card("Oldest Bin",       fmt_num(filt["days_in_stock"].max()) + " days")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Fuzzy suggestion column — find similar bin codes in stock for each unmatched bin
+            stock_df   = fetch_all("v_current_stock")
+            stock_list = stock_df[["bin_code","pcn","supplier","variety"]]\
+                         .to_dict("records") if not stock_df.empty else []
+
+            def get_suggestion(bin_code):
+                others = [s for s in stock_list if s["bin_code"] != bin_code]
+                candidates = fuzzy_candidates(bin_code, others, top_n=1, min_similarity=70)
+                if candidates:
+                    c = candidates[0]
+                    return f"{c['bin_code']} ({c['similarity']}%)"
+                return "—"
+
+            filt = filt.copy()
+            filt["possible_match"] = filt["bin_code"].apply(get_suggestion)
+
+            display_cols = {
+                "bin_code":      "Bin Code",
+                "days_in_stock": "Days in Stock",
+                "received_date": "Received",
+                "pcn":           "PCN",
+                "supplier":      "Supplier",
+                "variety":       "Variety",
+                "weight":        "Weight",
+                "wslip":         "W/Slip",
+                "grn_no":        "GRN",
+                "possible_match":"Possible Match"
+            }
+            disp = filt[[c for c in display_cols if c in filt.columns]].rename(columns=display_cols)
+            st.dataframe(disp, use_container_width=True, hide_index=True, height=420)
+
+            # Export
+            import io
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine="openpyxl") as w:
+                disp.to_excel(w, index=False)
+            st.download_button(
+                "⬇️ Export to Excel", data=buf.getvalue(),
+                file_name=f"unmatched_bins_{date.today()}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # ──────────────────────────────────────────────────────────
+    # TAB 2: BIN CODE CORRECTION
+    # ──────────────────────────────────────────────────────────
+    elif recon_tab == "Bin Code Correction":
+        st.markdown("#### Correct a bin code typo")
+        st.caption(
+            "Use this when a bin code was recorded incorrectly at intake. "
+            "This updates **all** transaction records for that bin and logs the change. "
+            "Admin only — this action cannot be undone."
+        )
+
+        if get_role() != "admin":
+            st.warning("⚠️ Only admins can perform bin code corrections.")
+            st.stop()
+
+        c1, c2 = st.columns(2)
+        old_code = c1.text_input("Wrong bin code (as recorded)", placeholder="e.g. 10334")
+        new_code = c2.text_input("Correct bin code (actual)",    placeholder="e.g. 10234")
+        reason   = st.text_input("Reason / notes", placeholder="e.g. Confirmed with receiving supervisor — digit transposed")
+
+        if old_code and new_code:
+            if old_code == new_code:
+                st.warning("Old and new codes are the same.")
+            else:
+                # Preview what will change
+                preview_res = (
+                    supabase.table("bin_transactions")
+                    .select("txid, transaction_type, transaction_date, pcn, supplier")
+                    .eq("bin_code", old_code)
+                    .execute()
+                )
+                preview_df = pd.DataFrame(preview_res.data)
+
+                if preview_df.empty:
+                    st.error(f"No transactions found for bin code **{old_code}**. Check the code.")
+                else:
+                    st.markdown(f"**Preview — {len(preview_df)} transaction(s) will be renamed:**")
+                    st.dataframe(preview_df, use_container_width=True, hide_index=True)
+
+                    st.markdown(
+                        f"<div style='background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.3);"
+                        f"border-radius:8px;padding:12px 16px;margin:12px 0;font-size:13px'>"
+                        f"⚠️ This will rename <b>{old_code}</b> → <b>{new_code}</b> across "
+                        f"<b>{len(preview_df)}</b> transaction row(s) and update bin_status. "
+                        f"This is permanent and logged.</div>",
+                        unsafe_allow_html=True
+                    )
+
+                    confirm_key = f"confirm_correction_{old_code}_{new_code}"
+                    confirmed = st.checkbox("I have verified this correction with physical records", key=confirm_key)
+
+                    if confirmed:
+                        if st.button("🔧 Apply Correction", type="primary"):
+                            try:
+                                result = supabase.rpc("correct_bin_code", {
+                                    "p_old_code":      old_code,
+                                    "p_new_code":      new_code,
+                                    "p_corrected_by":  user_email,
+                                    "p_reason":        reason or None
+                                }).execute()
+                                rows_updated = result.data
+                                st.success(
+                                    f"✅ Correction applied — {rows_updated} transaction row(s) updated. "
+                                    f"Bin **{old_code}** is now **{new_code}** across the entire ledger."
+                                )
+                            except Exception as e:
+                                st.error(f"Correction failed: {e}")
+
+    # ──────────────────────────────────────────────────────────
+    # TAB 3: CORRECTION HISTORY
+    # ──────────────────────────────────────────────────────────
+    elif recon_tab == "Correction History":
+        st.markdown("#### All bin code corrections ever applied")
+        st.caption("Full audit log — every correction is permanent and traceable.")
+
+        try:
+            hist_res = (
+                supabase.table("bin_corrections")
+                .select("*")
+                .order("corrected_at", desc=True)
+                .range(0, 1000)
+                .execute()
+            )
+            hist_df = pd.DataFrame(hist_res.data)
+
+            if hist_df.empty:
+                st.info("No corrections have been applied yet.")
+            else:
+                st.dataframe(hist_df, use_container_width=True, hide_index=True)
+        except Exception:
+            st.info("Correction history table not found — run reconcile.sql in Supabase first.")
