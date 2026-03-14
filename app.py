@@ -1864,6 +1864,13 @@ if menu == "Reconcile":
         if crossref.empty:
             st.success("✅ Nothing to reconcile — no unmatched receives or failed produce attempts.")
         else:
+            # Ensure all expected columns exist — view may return partial columns
+            # if one side of the FULL OUTER JOIN has no rows yet
+            for col in ["days_in_stock","rcv_weight","fuzzy_score","similarity",
+                        "match_type","rcv_bin","prod_bin"]:
+                if col not in crossref.columns:
+                    crossref[col] = None
+
             crossref["days_in_stock"] = pd.to_numeric(crossref["days_in_stock"], errors="coerce")
             crossref["rcv_weight"]    = pd.to_numeric(crossref["rcv_weight"],    errors="coerce")
             crossref["fuzzy_score"]   = pd.to_numeric(crossref["fuzzy_score"],   errors="coerce")
