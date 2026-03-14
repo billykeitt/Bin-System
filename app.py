@@ -619,6 +619,23 @@ def fmt_num(n, decimals=0):
     except:
         return "—"
 
+def template_download(template_name: str, label: str = "⬇️ Download Template"):
+    """Serve a pre-built Excel template as a download button."""
+    import base64, os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", template_name)
+    if not os.path.exists(path):
+        st.caption(f"Template not found: {template_name}")
+        return
+    with open(path, "rb") as f:
+        data = f.read()
+    st.download_button(
+        label     = label,
+        data      = data,
+        file_name = template_name,
+        mime      = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key       = f"tmpl_{template_name}"
+    )
+
 # ================================================================
 # FUZZY MATCH UTILITIES
 # ================================================================
@@ -993,7 +1010,10 @@ if menu == "Receive":
     page_header("📥", "Receive Bins", "Upload and register incoming bin deliveries")
     require_write()
 
-    file = st.file_uploader("Upload Receive Excel", type="xlsx")
+    c1, c2 = st.columns([3, 1])
+    with c2:
+        template_download("template_receive.xlsx", "⬇️ Download Template")
+    file = c1.file_uploader("Upload Receive Excel", type="xlsx")
 
     if file:
         try:
@@ -1149,7 +1169,13 @@ if menu == "Receive":
 if menu == "Produce":
     page_header("🏭", "Produce Bins", "Record bins sent through production")
     require_write()
-    file = st.file_uploader("Upload Production Excel", type="xlsx")
+
+    c1, c2, c3 = st.columns([3, 1, 1])
+    with c2:
+        template_download("template_produce.xlsx",    "⬇️ Template")
+    with c3:
+        template_download("template_produce_os.xlsx", "⬇️ OS Template")
+    file = c1.file_uploader("Upload Production Excel", type="xlsx")
 
     if file:
         df = std_columns(pd.read_excel(file))
@@ -1330,7 +1356,11 @@ if menu == "Produce":
 if menu == "Adjust":
     page_header("⚖️", "Adjust Stock", "Remove bins from stock via adjustment")
     require_write()
-    file = st.file_uploader("Upload Adjustment Excel", type="xlsx")
+
+    c1, c2 = st.columns([3, 1])
+    with c2:
+        template_download("template_adjust.xlsx", "⬇️ Download Template")
+    file = c1.file_uploader("Upload Adjustment Excel", type="xlsx")
 
     if file:
         df = std_columns(pd.read_excel(file))
