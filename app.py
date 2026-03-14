@@ -985,22 +985,13 @@ if menu == "Dashboard":
 # RECEIVE
 # ================================================================
 
+# ================================================================
+# RECEIVE
+# ================================================================
+
 if menu == "Receive":
     page_header("📥", "Receive Bins", "Upload and register incoming bin deliveries")
     require_write()
-
-    # ── Import mode toggle ────────────────────────────────────
-    import_mode = st.radio(
-        "Import mode",
-        ["Normal — daily receives", "Opening Stock — historical bulk import"],
-        horizontal=True,
-        help=(
-            "Opening Stock mode handles bins that appear more than once "
-            "in the file (same bin, different delivery dates). "
-            "It keeps the latest row per bin and closes prior cycles automatically."
-        )
-    )
-    is_opening_stock = import_mode.startswith("Opening Stock")
 
     file = st.file_uploader("Upload Receive Excel", type="xlsx")
 
@@ -1015,13 +1006,10 @@ if menu == "Receive":
             st.write(list(df.columns))
 
         if "BIN" not in df.columns:
-            st.error(
-                f"No BIN column found. Your file has: {list(df.columns)}\n\n"
-                "The column must be named exactly **BIN**."
-            )
+            st.error(f"No BIN column found. Your file has: {list(df.columns)}")
             st.stop()
 
-        # Ensure DATE column is parseable
+        # Parse dates for sorting
         if "DATE" in df.columns:
             df["_date_parsed"] = pd.to_datetime(df["DATE"], errors="coerce")
         else:
@@ -1029,41 +1017,54 @@ if menu == "Receive":
 
         st.caption(f"{len(df)} rows detected")
 
-        # ── Dedup logic ───────────────────────────────────────
-        # Identify bins appearing more than once in the file
+        # ── Step 1: Handle in-file duplicates automatically ───
+        # Sort oldest → newest so cycle numbering is date-correct
+        df = df.sort_values("_date_parsed", ascending=True, na_position="last").reset_index(drop=True)
+
         dup_mask      = df.duplicated(subset=["BIN"], keep=False)
         dupes_in_file = df[dup_mask]["BIN"].unique().tolist()
 
-        if is_opening_stock and dupes_in_file:
-            # For opening stock: keep only the LATEST row per duplicate bin
-            # Sort by date desc, then keep first occurrence per BIN
-            df_sorted   = df.sort_values("_date_parsed", ascending=False, na_position="last")
-            df_deduped  = df_sorted.drop_duplicates(subset=["BIN"], keep="first")
-            dropped_rows = df[dup_mask & ~df.index.isin(df_deduped.index)]
+        if dupes_in_file:
+            # Latest row per duplicate bin keeps the original code
+            # All earlier rows get OS-{bincode}-{n} prefix — orphan tracking
+            latest_idx  = set(df.groupby("BIN")["_date_parsed"].idxmax()[dupes_in_file].values)
+            bin_counter = {}
+            df["_final_bin"]    = df["BIN"]
+            df["_is_os_orphan"] = False
+
+            for idx, row in df.iterrows():
+                b = row["BIN"]
+                if b not in dupes_in_file:
+                    continue
+                bin_counter[b] = bin_counter.get(b, 0) + 1
+                if idx not in latest_idx:
+                    df.at[idx, "_final_bin"]    = f"OS-{b}-{bin_counter[b]:02d}"
+                    df.at[idx, "_is_os_orphan"] = True
+
+            os_orphans = df[df["_is_os_orphan"] == True]
+            os_latest  = df[(df["BIN"].isin(dupes_in_file)) & (~df["_is_os_orphan"])]
 
             st.markdown(
                 f"<div style='background:rgba(46,125,50,0.08);border:1px solid rgba(46,125,50,0.25);"
                 f"border-radius:8px;padding:12px 16px;margin:8px 0;font-size:13px'>"
-                f"📦 <b>Opening Stock mode</b> — {len(dupes_in_file)} bin(s) appear more than once. "
-                f"Keeping the <b>latest date</b> row for each. "
-                f"{len(dropped_rows)} earlier row(s) will be skipped.</div>",
+                f"ℹ️ <b>{len(dupes_in_file)} bin(s)</b> appear more than once.<br>"
+                f"• <b>{len(os_latest)}</b> latest row(s) → original code kept, production uses normally<br>"
+                f"• <b>{len(os_orphans)}</b> earlier row(s) → <code>OS-</code> prefix assigned for orphan tracking"
+                f"</div>",
                 unsafe_allow_html=True
             )
 
-            if not dropped_rows.empty:
-                with st.expander(f"View {len(dropped_rows)} skipped earlier rows"):
-                    skip_cols = [c for c in ["BIN","DATE","PCN","SUPPLIER","VARIETY","WEIGHT"] if c in dropped_rows.columns]
-                    st.dataframe(dropped_rows[skip_cols], use_container_width=True, hide_index=True)
+            with st.expander(f"View OS- prefix assignments ({len(os_orphans)} record(s))"):
+                prev_cols = [c for c in ["BIN", "_final_bin", "DATE", "PCN", "SUPPLIER", "VARIETY", "WEIGHT"] if c in df.columns]
+                prev_df   = df[df["_is_os_orphan"] == True][prev_cols].rename(columns={
+                    "BIN": "Original Code", "_final_bin": "Will Be Stored As"
+                })
+                st.dataframe(prev_df, use_container_width=True, hide_index=True)
 
-            # Work with deduped dataframe from here
-            df = df_deduped.reset_index(drop=True)
-            dupes_in_file = []   # cleared — already resolved
+            # Apply prefixed codes — from here BIN column is the final value
+            df["BIN"] = df["_final_bin"]
 
-        elif dupes_in_file and not is_opening_stock:
-            # Normal mode — duplicates are flagged and blocked as before
-            pass  # handled in preview below
-
-        # ── DB state check ────────────────────────────────────
+        # ── Step 2: DB validation ─────────────────────────────
         bins = df["BIN"].unique().tolist()
         try:
             states = get_bin_states(bins)
@@ -1071,48 +1072,31 @@ if menu == "Receive":
             st.error(f"Could not fetch bin states from database: {e}")
             st.stop()
 
-        already_rcv = [b for b in bins if states.get(b, {}).get("state") == "RECEIVED"]
-
-        # In opening stock mode: bins already in RECEIVED state need a prior
-        # cycle closed first (ADJUST_OUT) before the new receive can go in.
-        # We handle this automatically.
-        needs_close   = []
-        if is_opening_stock and already_rcv:
-            needs_close = already_rcv[:]
-            already_rcv = []   # will be handled, not blocked
-
-        # Amount mismatch check
+        already_rcv     = [b for b in bins if states.get(b, {}).get("state") == "RECEIVED"]
         amount_mismatch = []
-        if all(c in df.columns for c in ["WEIGHT","RATE","AMOUNT"]):
+        if all(c in df.columns for c in ["WEIGHT", "RATE", "AMOUNT"]):
             df["_expected"] = pd.to_numeric(df["WEIGHT"], errors="coerce") * pd.to_numeric(df["RATE"], errors="coerce")
             df["_actual"]   = pd.to_numeric(df["AMOUNT"], errors="coerce")
             bad = df[((df["_actual"] - df["_expected"]).abs() > 0.01) & df["_expected"].notna() & df["_actual"].notna()]
             amount_mismatch = bad["BIN"].tolist()
 
         will_process = [b for b in bins
-                        if b not in dupes_in_file
-                        and b not in already_rcv
+                        if b not in already_rcv
                         and b not in amount_mismatch]
 
-        # ── Preview metrics ───────────────────────────────────
+        # ── Step 3: Preview ───────────────────────────────────
         st.markdown("**Upload Preview**")
+        os_count_prev = len([b for b in will_process if b.startswith("OS-")])
         p1, p2, p3, p4, p5 = st.columns(5)
         with p1: metric_card("Total Rows",       fmt_num(len(df)))
-        with p2: metric_card("Will Process",     fmt_num(len(will_process)),   "✅ Ready")
-        with p3: metric_card("Dupes in File",    fmt_num(len(dupes_in_file)),  "⚠️ Skipped" if not is_opening_stock else "✅ Resolved")
-        with p4: metric_card("Already Received", fmt_num(len(already_rcv)),    "⚠️ Skipped")
-        with p5: metric_card("Amount Mismatch",  fmt_num(len(amount_mismatch)),"❌ Skipped")
+        with p2: metric_card("Will Process",     fmt_num(len(will_process)),    "✅ Ready")
+        with p3: metric_card("OS- Orphans",      fmt_num(os_count_prev),        "📦 Tracked")
+        with p4: metric_card("Already Received", fmt_num(len(already_rcv)),     "⚠️ Skipped")
+        with p5: metric_card("Amount Mismatch",  fmt_num(len(amount_mismatch)), "❌ Skipped")
 
-        if needs_close:
-            st.info(
-                f"ℹ️ {len(needs_close)} bin(s) are currently in RECEIVED state and will have their "
-                f"prior cycle closed automatically (ADJUST_OUT) before the new receive is inserted."
-            )
-
-        if dupes_in_file or already_rcv or amount_mismatch:
+        if already_rcv or amount_mismatch:
             with st.expander("View issue details"):
                 issue_rows = []
-                for b in dupes_in_file:   issue_rows.append({"bin_code": b, "issue": "Duplicate in file — use Opening Stock mode to resolve"})
                 for b in already_rcv:     issue_rows.append({"bin_code": b, "issue": "Already in RECEIVED state"})
                 for b in amount_mismatch: issue_rows.append({"bin_code": b, "issue": "Amount ≠ Weight × Rate"})
                 st.dataframe(pd.DataFrame(issue_rows), use_container_width=True, hide_index=True)
@@ -1122,37 +1106,16 @@ if menu == "Receive":
         else:
             st.dataframe(df[df["BIN"].isin(will_process)].head(5),
                          use_container_width=True, hide_index=True)
-            st.caption(f"Showing first 5 of {len(will_process)} bins that will be inserted"
-                       + (f" ({len(needs_close)} will have prior cycle auto-closed)" if needs_close else ""))
+            st.caption(f"Showing first 5 of {len(will_process)} bins to be inserted")
 
             if st.button(f"✅ Confirm & Process {len(will_process)} Bins"):
-                rows, close_rows, errors, seen = [], [], [], set()
+                rows, errors, seen = [], [], set()
 
                 for row in df.itertuples(index=False):
                     bin_code = row.BIN
                     if bin_code not in will_process: continue
                     if bin_code in seen: continue
                     seen.add(bin_code)
-
-                    # If this bin needs its prior cycle closed first, insert ADJUST_OUT
-                    if bin_code in needs_close:
-                        s = states.get(bin_code, {})
-                        close_rows.append({
-                            "txid":             str(uuid.uuid4()),
-                            "transaction_type": "ADJUST_OUT",
-                            "bin_code":         bin_code,
-                            "transaction_date": parse_date(row.DATE),
-                            "linked_txid":      s.get("last_txid"),
-                            "pcn":     s.get("pcn"),
-                            "supplier":s.get("supplier"),
-                            "source":  s.get("source"),
-                            "variety": s.get("variety"),
-                            "weight":  s.get("weight"),
-                            "rate":    s.get("rate"),
-                            "amount":  s.get("amount"),
-                            "created_at": datetime.now().isoformat(),
-                        })
-
                     rows.append({
                         "txid":             str(uuid.uuid4()),
                         "transaction_type": "RECEIVE",
@@ -1162,7 +1125,7 @@ if menu == "Receive":
                         "wslip":   clean(getattr(row, "W_SLIP",   None)),
                         "grn_no":  clean(getattr(row, "GRN_NO",   None)),
                         "wht_no":  clean(getattr(row, "W_HT_NO",  None)),
-                        "supplier":clean(getattr(row, "SUPPLIER",  None)),
+                        "supplier":clean(getattr(row, "SUPPLIER", None)),
                         "source":  clean(getattr(row, "SOURCE",   None)),
                         "variety": clean(getattr(row, "VARIETY",  None)),
                         "weight":  clean(getattr(row, "WEIGHT",   None)),
@@ -1172,22 +1135,16 @@ if menu == "Receive":
                     })
 
                 try:
-                    # Insert ADJUST_OUTs first to close prior cycles
-                    if close_rows:
-                        bulk_insert(close_rows, "AdjustClose")
-                    failed = bulk_insert(rows, "Receive")
+                    failed    = bulk_insert(rows, "Receive")
+                    os_done   = len([r for r in rows if r["bin_code"].startswith("OS-") and r["bin_code"] not in failed])
+                    clean_done = len(rows) - len(failed) - os_done
                     st.success(
-                        f"✅ {len(rows) - len(failed)} bins received successfully"
-                        + (f" — {len(close_rows)} prior cycle(s) auto-closed" if close_rows else "")
+                        f"✅ {len(rows) - len(failed)} bins received — "
+                        f"{clean_done} normal, {os_done} OS- orphan record(s)"
                     )
                     show_errors(errors, failed)
                 except Exception as e:
                     st.error(f"Insert failed: {e}")
-
-
-# ================================================================
-# PRODUCE
-# ================================================================
 
 if menu == "Produce":
     page_header("🏭", "Produce Bins", "Record bins sent through production")
@@ -1827,6 +1784,7 @@ if menu == "Reconcile":
         "", [
             "🔗 Cross-Reference",
             "📋 Unmatched Receives",
+            "🗂️ OS Orphans",
             "⚠️ Failed Produce Attempts",
             "🔧 Bin Code Correction",
             "📜 Correction History"
@@ -2010,7 +1968,112 @@ if menu == "Reconcile":
             recon_excel(disp, f"unmatched_bins_{date.today()}.xlsx")
 
     # ──────────────────────────────────────────────────────────
-    # TAB 3: FAILED PRODUCE ATTEMPTS
+    # TAB 3: OS ORPHANS
+    # ──────────────────────────────────────────────────────────
+    elif recon_tab == "🗂️ OS Orphans":
+        st.markdown("#### Opening Stock Orphan Records")
+        st.caption(
+            "These are earlier delivery records from the Opening Stock import that were assigned "
+            "an OS- prefix. They are sitting in RECEIVED state waiting to be either linked to "
+            "production or adjusted out. The production manager decides what to do with each one."
+        )
+
+        try:
+            os_res = supabase.table("bin_transactions")\
+                .select("bin_code, transaction_date, pcn, supplier, variety, weight, amount, grn_no, wslip")\
+                .like("bin_code", "OS-%")\
+                .order("transaction_date")\
+                .range(0, 10000)\
+                .execute()
+            os_df = pd.DataFrame(os_res.data)
+        except Exception as e:
+            st.error(f"Could not fetch OS records: {e}")
+            st.stop()
+
+        if os_df.empty:
+            st.info("No OS- orphan records found. These are created when you use Opening Stock mode with duplicate bins.")
+        else:
+            os_df["weight"] = pd.to_numeric(os_df["weight"], errors="coerce")
+            os_df["amount"] = pd.to_numeric(os_df["amount"], errors="coerce")
+            os_df["transaction_date"] = pd.to_datetime(os_df["transaction_date"], errors="coerce")
+
+            # Check which ones are still in RECEIVED state vs already produced/adjusted
+            os_bins  = os_df["bin_code"].tolist()
+            os_states = get_bin_states(os_bins)
+
+            os_df["current_state"] = os_df["bin_code"].apply(
+                lambda b: os_states.get(b, {}).get("state", "UNKNOWN")
+            )
+            os_df["original_bin"] = os_df["bin_code"].str.replace(r"^OS-(.+)-\d+$", r"\1", regex=True)
+            os_df["days_waiting"] = (pd.Timestamp.today() - os_df["transaction_date"]).dt.days
+
+            # KPIs
+            still_open   = os_df[os_df["current_state"] == "RECEIVED"]
+            already_done = os_df[os_df["current_state"].isin(["PRODUCED","CONSUMED"])]
+
+            k1, k2, k3, k4 = st.columns(4)
+            with k1: metric_card("Total OS Records",  fmt_num(len(os_df)))
+            with k2: metric_card("Still Open",        fmt_num(len(still_open)),   "Need action")
+            with k3: metric_card("Produced/Adjusted", fmt_num(len(already_done)), "✅ Resolved")
+            with k4: metric_card("Total Weight",      fmt_num(still_open["weight"].sum(), 1) + " kg")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Filter to still-open by default
+            show_all = st.checkbox("Show all OS records (including resolved)", value=False)
+            disp_df  = os_df if show_all else still_open
+
+            # Colour code by state
+            def highlight_os(row):
+                s = row.get("current_state","")
+                if s == "RECEIVED":   return ["background:rgba(255,152,0,0.10)"] * len(row)
+                if s == "PRODUCED":   return ["background:rgba(46,125,50,0.10)"] * len(row)
+                return [""] * len(row)
+
+            display_cols = {
+                "bin_code":       "OS Bin Code",
+                "original_bin":   "Original Bin",
+                "current_state":  "State",
+                "days_waiting":   "Days Waiting",
+                "transaction_date":"Received Date",
+                "pcn":            "PCN",
+                "supplier":       "Supplier",
+                "variety":        "Variety",
+                "weight":         "Weight",
+                "amount":         "Value",
+                "grn_no":         "GRN",
+                "wslip":          "W/Slip",
+            }
+            disp = disp_df[[c for c in display_cols if c in disp_df.columns]]\
+                   .rename(columns=display_cols)\
+                   .sort_values("Days Waiting", ascending=False)
+
+            st.dataframe(
+                disp.style.apply(highlight_os, axis=1),
+                use_container_width=True, hide_index=True, height=420
+            )
+
+            # Export
+            import io
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine="openpyxl") as w:
+                disp.to_excel(w, index=False)
+            st.download_button("⬇️ Export to Excel", data=buf.getvalue(),
+                               file_name=f"os_orphans_{date.today()}.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+            st.markdown("---")
+            st.markdown(
+                "**What to do with open OS records:**\n\n"
+                "- If the bin was genuinely in stock for that earlier delivery → "
+                "upload a produce file with the OS bin code (e.g. `OS-1001-01`) to close it\n"
+                "- If the earlier delivery never happened or was an error → "
+                "use the Bin Code Correction tab to rename it, or adjust it out via the Adjust page\n"
+                "- If unsure → leave it, check physically with the receiving team"
+            )
+
+    # ──────────────────────────────────────────────────────────
+    # TAB 4: FAILED PRODUCE ATTEMPTS
     # ──────────────────────────────────────────────────────────
     elif recon_tab == "⚠️ Failed Produce Attempts":
         st.markdown("#### Bins production attempted but couldn't find in stock")
